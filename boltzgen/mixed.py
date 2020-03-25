@@ -17,7 +17,6 @@ class MixedTransform(nn.Module):
         z_mat,
         training_data,
     ):
-        print("Inside MixedTransform constructor")
         super().__init__()
         # cartesian indices are the atom indices of the atoms that are not
         # represented in internal coordinates but are left as cartesian
