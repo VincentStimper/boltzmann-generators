@@ -18,7 +18,7 @@ class CoordinateTransform(nf.flows.Flow):
         :param backbone_indices: Indices of atoms of backbone, will be left in
         cartesian coordinates
         """
-
+        super().__init__()
         self.mixed_transform = mixed.MixedTransform(n_dim, backbone_indices, z_matrix, data)
 
     def forward(self, z):
