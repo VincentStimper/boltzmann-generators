@@ -15,7 +15,7 @@ class OpenMMEnergyInterface(torch.autograd.Function):
         n_batch = input.shape[0]
         n_dim = input.shape[1]
         energies = torch.zeros((n_batch, 1))
-        forces = torch.zeros((n_batch, n_dim))
+        forces = torch.zeros((n_batch, n_dim, 3))
 
         kBT = R * temperature
         input = input.cpu().detach().numpy()
@@ -37,7 +37,7 @@ class OpenMMEnergyInterface(torch.autograd.Function):
                 )
                 / kBT
             )
-            forces[i, :] = torch.from_numpy(-f.reshape(-1).astype("float32"))
+            forces[i, :] = torch.from_numpy(-f.astype("float32"))
         # Save the forces for the backward step, uploading to the gpu if needed
         ctx.save_for_backward(forces.to(device=device))
         return energies.to(device=device)
@@ -45,7 +45,7 @@ class OpenMMEnergyInterface(torch.autograd.Function):
     @staticmethod
     def backward(ctx, grad_output):
         forces, = ctx.saved_tensors
-        return forces * grad_output, None, None
+        return forces * grad_output.unsqueeze(2), None, None
 
 
 openmm_energy = OpenMMEnergyInterface.apply
