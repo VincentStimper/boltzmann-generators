@@ -13,7 +13,7 @@ class OpenMMEnergyInterface(torch.autograd.Function):
     def forward(ctx, input, openmm_context, temperature):
         device = input.device
         n_batch = input.shape[0]
-        input.view(n_batch, -1, 3)
+        input = input.view(n_batch, -1, 3)
         n_dim = input.shape[1]
         energies = torch.zeros((n_batch, 1))
         forces = torch.zeros((n_batch, n_dim, 3))
