@@ -1,3 +1,4 @@
+import torch
 import boltzgen.openmm_interface as omi
 import normflow as nf
 from openmmtools.constants import kB
@@ -17,8 +18,8 @@ class Boltzmann(nf.distributions.PriorDistribution):
         # Save input parameters
         self.sim_context = sim_context
         self.temperature = temperature
-        self.energy_cut = energy_cut
-        self.energy_max = energy_max
+        self.energy_cut = torch.tensor(energy_cut)
+        self.energy_max = torch.tensor(energy_max)
 
         # Set up functions
         self.openmm_energy = omi.OpenMMEnergyInterface.apply
