@@ -228,6 +228,10 @@ class InternalCoordinateTransform(Transform):
         self.register_buffer("mean_bonds", mean_bonds)
 
     def _setup_std_bonds(self, x):
+        # Adding 1e-4 is for numerical stability but results in some
+        # dimensions being not properly normalised e.g. bond lengths
+        # which can have stds of the order 1e-7
+        # The flow will then have to fit to a very concentrated dist
         std_bonds = torch.std(x[:, self.bond_indices], dim=0) + 1e-4
         self.register_buffer("std_bonds", std_bonds)
 
