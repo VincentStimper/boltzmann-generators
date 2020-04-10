@@ -54,6 +54,9 @@ openmm_energy = OpenMMEnergyInterface.apply
 
 
 def regularize_energy(energy, energy_cut, energy_max):
+    # Cast inputs to same type
+    energy_cut = energy_cut.type(energy.type())
+    energy_max = energy_max.type(energy.type())
     # Fill any NaNs with energy_max
     energy = torch.where(torch.isfinite(energy), energy, energy_max)
     # Cap the energy at energy_max
