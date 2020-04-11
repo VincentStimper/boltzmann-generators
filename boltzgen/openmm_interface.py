@@ -2,6 +2,7 @@ from simtk import openmm as mm
 from simtk.openmm import app
 from simtk.unit import kelvin, kilojoule, mole, nanometer
 import torch
+import numpy as np
 
 
 # Gas constant in kJ / mol / K
@@ -23,22 +24,26 @@ class OpenMMEnergyInterface(torch.autograd.Function):
         for i in range(n_batch):
             # reshape the coordinates and send to OpenMM
             x = input[i, :].reshape(-1, 3)
-            openmm_context.setPositions(x)
-            state = openmm_context.getState(getForces=True, getEnergy=True)
+            # Handle nans and infinities
+            if torch.any(torch.isnan(x)) or torch.any(torch.isinf(x)):
+                energies[i, 0] = np.nan
+            else:
+                openmm_context.setPositions(x)
+                state = openmm_context.getState(getForces=True, getEnergy=True)
 
-            # get energy
-            energies[i] = (
-                state.getPotentialEnergy().value_in_unit(kilojoule / mole) / kBT
-            )
-
-            # get forces
-            f = (
-                state.getForces(asNumpy=True).value_in_unit(
-                    kilojoule / mole / nanometer
+                # get energy
+                energies[i] = (
+                    state.getPotentialEnergy().value_in_unit(kilojoule / mole) / kBT
                 )
-                / kBT
-            )
-            forces[i, :] = torch.from_numpy(-f.astype("float32"))
+
+                # get forces
+                f = (
+                    state.getForces(asNumpy=True).value_in_unit(
+                        kilojoule / mole / nanometer
+                    )
+                    / kBT
+                )
+                forces[i, :] = torch.from_numpy(-f.astype("float32"))
         forces = forces.view(n_batch, n_dim * 3)
         # Save the forces for the backward step, uploading to the gpu if needed
         ctx.save_for_backward(forces.to(device=device))
