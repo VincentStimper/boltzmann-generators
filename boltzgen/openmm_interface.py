@@ -25,7 +25,7 @@ class OpenMMEnergyInterface(torch.autograd.Function):
             # reshape the coordinates and send to OpenMM
             x = input[i, :].reshape(-1, 3)
             # Handle nans and infinities
-            if torch.any(torch.isnan(x)) or torch.any(torch.isinf(x)):
+            if np.any(np.isnan(x)) or np.any(np.isinf(x)):
                 energies[i, 0] = np.nan
             else:
                 openmm_context.setPositions(x)
