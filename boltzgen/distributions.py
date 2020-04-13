@@ -31,4 +31,5 @@ class Boltzmann(nf.distributions.PriorDistribution):
             self.energy_cut, self.energy_max)
 
     def log_prob(self, z):
+        print(self.norm_energy(z))
         return -self.norm_energy(z)
