@@ -50,6 +50,8 @@ class OpenMMEnergyInterface(torch.autograd.Function):
         is_nan = torch.sum(torch.isnan(forces), 1) > 0
         print(is_nan)
         energies[is_nan, 0] = np.nan
+        print(energies)
+        print(energies.to(device=device))
         # Save the forces for the backward step, uploading to the gpu if needed
         ctx.save_for_backward(forces.to(device=device))
         return energies.to(device=device)
