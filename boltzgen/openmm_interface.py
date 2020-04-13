@@ -44,14 +44,12 @@ class OpenMMEnergyInterface(torch.autograd.Function):
                     / kBT
                 )
                 forces[i, :] = torch.from_numpy(-f.astype("float32"))
-        print(torch.any(torch.isnan(forces)))
-        print(torch.any(torch.isinf(forces)))
         forces = forces.view(n_batch, n_dim * 3)
         is_nan = torch.sum(torch.isnan(forces), 1) > 0
         print(is_nan)
+        print(energies)
         energies[is_nan, 0] = np.nan
         print(energies)
-        print(energies.to(device=device))
         # Save the forces for the backward step, uploading to the gpu if needed
         ctx.save_for_backward(forces.to(device=device))
         return energies.to(device=device)
