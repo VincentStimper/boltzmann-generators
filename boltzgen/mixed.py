@@ -99,8 +99,7 @@ class MixedTransform(nn.Module):
         # Run through inverse internal coordinate transform
         x, new_jac = self.ic_transform.inverse(x)
         jac = jac + new_jac
-        print(pca_jac)
-        print(new_jac)
+
         return x, jac
 
     #debugging
