@@ -78,7 +78,8 @@ def reconstruct_cart(cart, ref_atoms, bonds, angles, dihs):
         + torch.log(torch.abs(torch.sin(angles.squeeze(2)))),
         dim=1,
     )
-    print(bonds)
+    print('max', torch.max(bonds))
+    print('min', torch.min(bonds))
 
     # Reconstruct the position of p4
     v1 = p1 - p2
