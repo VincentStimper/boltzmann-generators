@@ -193,10 +193,6 @@ class InternalCoordinateTransform(Transform):
                 * self.std_bonds[self.atom_to_stats[atoms_to_build]]
                 + self.mean_bonds[self.atom_to_stats[atoms_to_build]]
             )
-            print('max x', torch.max(x[:, 3 * atoms_to_build]))
-            print('min x', torch.min(x[:, 3 * atoms_to_build]))
-            print('max bond', torch.max(bonds))
-            print('min bond', torch.min(bonds))
             
             # Get all of the angles by retrieving the appropriate columns and
             # un-normalizing.
