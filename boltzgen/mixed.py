@@ -56,16 +56,16 @@ class MixedTransform(nn.Module):
 
         # Create the jacobian vector
         jac = x.new_zeros(x.shape[0])
-        print(x.size())
+        print(torch.mean(x, dim=0))
 
         # Run transform to internal coordinates.
         x, new_jac = self.ic_transform.forward(x)
         jac = jac + new_jac
-        print(x.size())
+        print(torch.mean(x, dim=0))
 
         # Permute to put PCAs first.
         x = x[:, self.permute]
-        print(x.size())
+        print(torch.mean(x, dim=0))
 
         # Split off the PCA coordinates and internal coordinates
         pca_input = x[:, :3*self.len_cart_inds]
@@ -77,7 +77,7 @@ class MixedTransform(nn.Module):
 
         # Merge everything back together.
         x = torch.cat([pca_output] + [int_coords], dim=1)
-        print(x.size())
+        print(torch.mean(x, dim=0))
 
         return x, jac
 
