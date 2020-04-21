@@ -43,7 +43,9 @@ class OpenMMEnergyInterface(torch.autograd.Function):
                     )
                     / kBT
                 )
-                forces[i, :] = torch.from_numpy(-f.astype("float32"))
+                print(f.dtype)
+                forces[i, :] = torch.from_numpy(-f)
+        print(forces.type())
         forces = forces.view(n_batch, n_dim * 3)
         is_nan = torch.sum(torch.isnan(forces), 1) > 0
         forces[is_nan, :] = torch.zeros(n_dim * 3)
