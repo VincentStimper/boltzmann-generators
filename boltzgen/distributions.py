@@ -34,6 +34,40 @@ class Boltzmann(nf.distributions.PriorDistribution):
         return -self.norm_energy(z)
 
 
+class GaussianBoltzmann(nf.distributions.PriorDistribution):
+    """
+    Linear combination of standard Gaussian with a Boltzmann distribution
+    using OpenMM to get energy and forces
+    """
+    def __init__(self, sim_context, temperature, energy_cut, energy_max, alpha=0):
+        """
+        Constructor
+        :param sim_context: Context of the simulation object used for energy
+        and force calculation
+        :param temperature: Temperature of System
+        :param alpha: Share of Gaussian distribution
+        """
+        # Save input parameters
+        self.sim_context = sim_context
+        self.temperature = temperature
+        self.energy_cut = torch.tensor(energy_cut)
+        self.energy_max = torch.tensor(energy_max)
+
+        # Set up functions
+        self.openmm_energy = omi.OpenMMEnergyInterface.apply
+        self.regularize_energy = omi.regularize_energy
+
+        self.kbT = (kB * self.temperature)._value
+        self.norm_energy = lambda pos: self.regularize_energy(
+            self.openmm_energy(pos, self.sim_context, temperature) / self.kbT,
+            self.energy_cut, self.energy_max)
+
+        self.alpha = alpha
+
+    def log_prob(self, z):
+        return -(1 - self.alpha) * self.norm_energy(z) - self.alpha * 0.5 * torch.sum(z ** 2, 1)
+
+
 class DoubleWell(nf.distributions.PriorDistribution):
     """
     Boltzmann distribution of the double well potential of the form
