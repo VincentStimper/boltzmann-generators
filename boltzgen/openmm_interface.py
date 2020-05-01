@@ -45,8 +45,6 @@ class OpenMMEnergyInterface(torch.autograd.Function):
                 )
                 forces[i, :] = torch.from_numpy(-f)
         forces = forces.view(n_batch, n_dim * 3)
-        is_nan = torch.sum(torch.isnan(forces), 1) > 0
-        forces[is_nan, :] = torch.zeros(n_dim * 3).type(forces.type())
         # Save the forces for the backward step, uploading to the gpu if needed
         ctx.save_for_backward(forces.to(device=device))
         return energies.to(device=device)
@@ -64,12 +62,14 @@ def regularize_energy(energy, energy_cut, energy_max):
     # Cast inputs to same type
     energy_cut = energy_cut.type(energy.type())
     energy_max = energy_max.type(energy.type())
-    # Fill any NaNs with energy_max
-    energy = torch.where(torch.isfinite(energy), energy, energy_max)
+    # Check whether energy finite
+    energy_finite = torch.isfinite(energy)
     # Cap the energy at energy_max
     energy = torch.where(energy < energy_max, energy, energy_max)
     # Make it logarithmic above energy cut and linear below
     energy = torch.where(
         energy < energy_cut, energy, torch.log(energy - energy_cut + 1) + energy_cut
     )
+    energy = torch.where(energy_finite, energy,
+                         torch.tensor(np.nan, dtype=energy.type()))
     return energy
