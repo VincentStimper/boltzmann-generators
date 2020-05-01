@@ -71,5 +71,5 @@ def regularize_energy(energy, energy_cut, energy_max):
         energy < energy_cut, energy, torch.log(energy - energy_cut + 1) + energy_cut
     )
     energy = torch.where(energy_finite, energy,
-                         torch.tensor(np.nan, dtype=energy.type()))
+                         torch.tensor(np.nan, dtype=energy.dtype, device=energy.device))
     return energy
