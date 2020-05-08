@@ -61,7 +61,7 @@ class TransformedBoltzmann(nf.distributions.PriorDistribution):
 
         self.kbT = (kB * self.temperature)._value
         self.norm_energy = lambda pos: self.regularize_energy(
-            self.openmm_energy(pos, self.sim_context, temperature) / self.kbT,
+            self.openmm_energy(pos, self.sim_context, temperature)[:, 0] / self.kbT,
             self.energy_cut, self.energy_max)
 
         self.transform = transform
