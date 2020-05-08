@@ -39,7 +39,7 @@ class TransformedBoltzmann(nf.distributions.PriorDistribution):
     Boltzmann distribution with respect to transformed variables,
     uses OpenMM to get energy and forces
     """
-    def __init__(self, sim_context, temperature, energy_cut, energy_max, transfrom):
+    def __init__(self, sim_context, temperature, energy_cut, energy_max, transform):
         """
         Constructor
         :param sim_context: Context of the simulation object used for energy
@@ -64,7 +64,7 @@ class TransformedBoltzmann(nf.distributions.PriorDistribution):
             self.openmm_energy(pos, self.sim_context, temperature) / self.kbT,
             self.energy_cut, self.energy_max)
 
-        self.transform = transfrom
+        self.transform = transform
 
     def log_prob(self, z):
         z, _ = self.transform(z)
