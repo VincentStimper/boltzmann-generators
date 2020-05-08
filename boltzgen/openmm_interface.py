@@ -16,7 +16,7 @@ class OpenMMEnergyInterface(torch.autograd.Function):
         n_batch = input.shape[0]
         input = input.view(n_batch, -1, 3)
         n_dim = input.shape[1]
-        energies = torch.zeros((n_batch, 1))
+        energies = torch.zeros(n_batch)
         forces = torch.zeros_like(input)
 
         kBT = R * temperature
@@ -26,7 +26,7 @@ class OpenMMEnergyInterface(torch.autograd.Function):
             x = input[i, :].reshape(-1, 3)
             # Handle nans and infinities
             if np.any(np.isnan(x)) or np.any(np.isinf(x)):
-                energies[i, 0] = np.nan
+                energies[i] = np.nan
             else:
                 openmm_context.setPositions(x)
                 state = openmm_context.getState(getForces=True, getEnergy=True)
