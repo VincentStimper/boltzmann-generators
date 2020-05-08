@@ -34,18 +34,20 @@ class Boltzmann(nf.distributions.PriorDistribution):
         return -self.norm_energy(z)
 
 
-class GaussianBoltzmann(nf.distributions.PriorDistribution):
+class TransformedBoltzmann(nf.distributions.PriorDistribution):
     """
-    Linear combination of standard Gaussian with a Boltzmann distribution
-    using OpenMM to get energy and forces
+    Boltzmann distribution with respect to transformed variables,
+    uses OpenMM to get energy and forces
     """
-    def __init__(self, sim_context, temperature, energy_cut, energy_max, alpha=0):
+    def __init__(self, sim_context, temperature, energy_cut, energy_max, transfrom):
         """
         Constructor
         :param sim_context: Context of the simulation object used for energy
         and force calculation
         :param temperature: Temperature of System
-        :param alpha: Share of Gaussian distribution
+        :param energy_cut: Energy at which logarithm is applied
+        :param energy_max: Maximum energy
+        :param transfrom: Coordinate transformation
         """
         # Save input parameters
         self.sim_context = sim_context
@@ -62,10 +64,11 @@ class GaussianBoltzmann(nf.distributions.PriorDistribution):
             self.openmm_energy(pos, self.sim_context, temperature) / self.kbT,
             self.energy_cut, self.energy_max)
 
-        self.alpha = alpha
+        self.transform = transfrom
 
     def log_prob(self, z):
-        return -(1 - self.alpha) * self.norm_energy(z) - self.alpha * 0.5 * torch.sum(z ** 2, 1)
+        z, _ = self.transform(z)
+        return -self.norm_energy(z)
 
 
 class DoubleWell(nf.distributions.PriorDistribution):
