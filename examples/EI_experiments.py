@@ -18,6 +18,7 @@ from boltzgen.flows import CoordinateTransform
 import mdtraj
 from matplotlib import pyplot as plt
 from tqdm import tqdm
+from boltzgen.utils import KSD
 
 # Set up simulation object
 temperature = 1000
@@ -68,16 +69,16 @@ mixed_transform = mixed.MixedTransform(66, backbone_indices, z, training_data)
 x, _ = mixed_transform.forward(training_data)
 print("Training data shape", x.shape)
 
-length_chains = 100
 dims = 60
 
 class HMC(nn.Module):
-    def __init__(self):
+    def __init__(self, length):
         super().__init__()
-        eps = torch.nn.Parameter(0.01 * torch.ones((length_chains, dims), requires_grad=True))
-        log_mass = torch.nn.Parameter(0.0 * torch.ones((length_chains, dims), requires_grad=True))
+        eps = torch.nn.Parameter(0.01 * torch.ones((length, dims), requires_grad=True))
+        log_mass = torch.nn.Parameter(0.0 * torch.ones((length, dims), requires_grad=True))
         self.register_parameter('eps', eps)
         self.register_parameter('log_mass', log_mass)
+        self.length = length
 
     def logP(self, x):
         z, invlogdet = mixed_transform.inverse(x)
@@ -103,8 +104,11 @@ class HMC(nn.Module):
             p = p_half - (eps / 2.0) * -self.gradlogP(x)
         return x, p
 
-    def draw_samples(self, initial_samples, L=length_chains, return_probs=False):
+    def draw_samples(self, initial_samples, L=None, return_probs=False):
         x = initial_samples
+
+        if L is None:
+            L = self.length
 
         all_probs = np.zeros((L, initial_samples.shape[0]))
         for i in range(L):
@@ -132,7 +136,7 @@ class HMC(nn.Module):
     def get_log_target_graph(self, initial_samples):
         x = initial_samples
         log_targets = []
-        for i in range(length_chains):
+        for i in range(self.length):
             # Draw momentum
             p = torch.randn_like(x) * torch.exp(0.5 * self.log_mass[i, :])
             # Propose new states
@@ -153,11 +157,12 @@ class HMC(nn.Module):
         return np.array(log_targets)
 
 
-    def forward(self, initial_samples, L=length_chains):
+    def forward(self, initial_samples, L=None):
+        if L is None:
+            L = self.length
         samples = self.draw_samples(initial_samples, L)
         return -torch.mean(self.logP(samples))
 
-hmc = HMC()
 
 
 # Define flows
@@ -200,6 +205,27 @@ def fix_dih(x):
     x = np.where(x>np.pi, x-2*np.pi, x)
     return x
 
+
+#%%
+# ---------- Train different lengths of chain -----------
+for length in range(10, 100, 10):
+    print(length)
+    hmc = HMC(length)
+    optimizer = torch.optim.Adam(hmc.parameters(), lr=1e-3)
+    training_progress = []
+    for i in range(100):
+        optimizer.zero_grad()
+        flow_samples, _ = nfm.sample(100)
+        flow_samples, _ = flows[-1].inverse(flow_samples)
+        log_target = hmc.forward(flow_samples.double())
+        log_target.backward()
+        training_progress.append(log_target.detach().numpy())
+        optimizer.step()
+    training_progress = np.array(training_progress)
+    np.savetxt('saved_data/train_prog_length{}'.format(length), training_progress)
+    torch.save(hmc.state_dict(), 'models/hmc_100iter_length{}'.format(length))
+
+
 #%%
 # ----------- Train Flow ---------------
 batch_size = 128
@@ -238,5 +264,59 @@ for i in range(60):
     plt.plot(positions, kde_data(positions))
     plt.plot(positions, kde_flow(positions))
     plt.show()
+
+#%%
+# ---------- Test flow KSD ------------
+num_repeats = 10
+# Create dummy HMC just to use it's grad log p function
+hmc_dummy = HMC(42)
+
+# First compare to flow
+flow_repeats = np.zeros((num_repeats,))
+for i in range(num_repeats):
+    flow_samples, _ = nfm.sample(10000)
+    flow_samples, _ = flows[-1].inverse(flow_samples)
+    flow_gradlogp = hmc_dummy.gradlogP(flow_samples)
+    flow_repeats[i] = KSD(flow_samples.detach().numpy(),
+        flow_gradlogp.detach().numpy())
+
+print("flow mean", np.mean(flow_repeats))
+print("flow std", np.std(flow_repeats))
+
+
+
+
+
+# %%
+# ---------- Test HMC marginals ------------
+
+# draw samples
+# for length in range(10, 80, 10):
+# print(length)
+# hmc = HMC(length)
+# hmc.load_state_dict(torch.load('models/hmc_100iter_length{}'.format(length)))
+# flow_samples, _ = nfm.sample(1000)
+# flow_samples, _ = flows[-1].inverse(flow_samples)
+# hmc_samples = hmc.draw_samples(flow_samples)
+# hmc_samples = hmc_samples.detach().numpy()
+# np.save('saved_data/length_{}_1000samples'.format(length), hmc_samples)
+x_np = x.detach().numpy()
+flow_samples = flow_samples.detach().numpy()
+import scipy.stats
+plot_dims = [23, 32, 35, 41, 53]
+for length in range(10, 80, 10):
+    print("**************************")
+    print(length)
+    hmc_samples = np.load('saved_data/length_{}_1000samples.npy'.format(length))
+    for i in plot_dims:
+        kde_hmc = scipy.stats.gaussian_kde(fix_dih(hmc_samples[:, i]))
+        kde_flow = scipy.stats.gaussian_kde(fix_dih(flow_samples[:, i]))
+        kde_data = scipy.stats.gaussian_kde(x_np[:, i])
+        positions = np.linspace(-4, 4, 1000)
+        plt.plot(positions, kde_data(positions))
+        plt.plot(positions, kde_flow(positions))
+        plt.plot(positions, kde_hmc(positions))
+        plt.show()
+
 
 # %%
