@@ -104,16 +104,16 @@ class TransformedBoltzmannParallel(nf.distributions.PriorDistribution):
         self.n_threads = mp.cpu_count() if n_threads is None else n_threads
 
         # Create pool for parallel processing
-        def initializer():
-            global sim, openmm_context, temp
-            temp = temperature
-            sim = app.Simulation(system.topology, system.system,
+        def initializer(sys, temp):
+            global sim, openmm_context, temperature
+            temperature = temp
+            sim = app.Simulation(sys.topology, sys.system,
                                  mm.LangevinIntegrator(temperature * unit.kelvin,
                                  1.0 / unit.picosecond, 1.0 * unit.femtosecond),
                                  platform=mm.Platform.getPlatformByName('CPU'))
             openmm_context = sim.context
 
-        self.pool = mp.Pool(self.n_threads, initializer, ())
+        self.pool = mp.Pool(self.n_threads, initializer, (system, temperature))
 
         # Set up functions
         self.openmm_energy = omi.OpenMMEnergyInterfaceParallel.apply
