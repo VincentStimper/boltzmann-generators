@@ -80,13 +80,12 @@ class OpenMMEnergyInterfaceParallel(torch.autograd.Function):
         # Process batch  of states
         # openmm context and temperature are passed a global variables
         n_batch = input.shape[0]
-        input = input.view(n_batch, -1, 3)
+        input = input.reshape(n_batch, -1, 3)
         n_dim = input.shape[1]
-        energies = torch.zeros((n_batch, 1))
-        forces = torch.zeros((n_batch, n_dim, 3))
+        energies = np.zeros((n_batch, 1))
+        forces = np.zeros((n_batch, n_dim, 3))
 
         kBT = R * temperature
-        input = input.cpu().detach().numpy()
         for i in range(n_batch):
             # reshape the coordinates and send to OpenMM
             x = input[i, :].reshape(-1, 3)
@@ -102,20 +101,22 @@ class OpenMMEnergyInterfaceParallel(torch.autograd.Function):
                     unit.kilojoule / unit.mole) / kBT
 
                 # get forces
-                f = state.getForces(asNumpy=True).value_in_unit(
+                forces[i, :] = state.getForces(asNumpy=True).value_in_unit(
                     unit.kilojoule / unit.mole / unit.nanometer) / kBT
-                forces[i, :] = torch.from_numpy(-f)
-        forces = forces.view(n_batch, n_dim * 3)
+        forces = forces.reshape(n_batch, n_dim * 3)
         return energies, forces
 
     @staticmethod
-    def forward(ctx, input, pool, split_length):
+    def forward(ctx, input, pool, splits):
         device = input.device
-        input_splitted = torch.split(input, split_length)
-        energies_, forces_ = zip(*pool.map(OpenMMEnergyInterfaceParallel.batch_proc,
-                                           input_splitted))
-        energies = torch.cat(energies_)
-        forces = torch.cat(forces_)
+        input_np = input.cpu().detach().numpy()
+        input_splitted = np.array_split(input_np, splits)
+        energies_out, forces_out = zip(*pool.map(
+            OpenMMEnergyInterfaceParallel.batch_proc, input_splitted))
+        energies_np = np.concatenate(energies_out)
+        forces_np = np.concatenate(forces_out)
+        energies = torch.from_numpy(energies_np)
+        forces = torch.from_numpy(forces_np)
         # Save the forces for the backward step, uploading to the gpu if needed
         ctx.save_for_backward(forces.to(device=device))
         return energies.to(device=device)

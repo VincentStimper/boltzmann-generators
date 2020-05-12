@@ -109,17 +109,15 @@ class TransformedBoltzmannParallel(nf.distributions.PriorDistribution):
         self.regularize_energy = omi.regularize_energy
 
         self.kbT = (kB * self.temperature)._value
-        self.norm_energy = lambda pos, split_length: self.regularize_energy(
-            self.openmm_energy(pos, self.pool, split_length)[:, 0] / self.kbT,
+        self.norm_energy = lambda pos, splits: self.regularize_energy(
+            self.openmm_energy(pos, self.pool, splits)[:, 0] / self.kbT,
             self.energy_cut, self.energy_max)
 
         self.transform = transform
 
     def log_prob(self, z):
-        n_batch = len(z)
-        split_length = int(np.ceil(n_batch / self.n_threads))
         z_, _ = self.transform(z)
-        return -self.norm_energy(z_, split_length)
+        return -self.norm_energy(z_, self.n_threads)
 
 
 class DoubleWell(nf.distributions.PriorDistribution):
