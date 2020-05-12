@@ -63,6 +63,7 @@ class OpenMMEnergyInterfaceParallel(torch.autograd.Function):
     def batch_proc(input):
         # Process batch  of states
         # openmm context and temperature are passed a global variables
+        global temp, openmm_context
         n_batch = input.shape[0]
         input = input.view(n_batch, -1, 3)
         n_dim = input.shape[1]
