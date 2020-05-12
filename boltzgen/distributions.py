@@ -105,7 +105,8 @@ class TransformedBoltzmannParallel(nf.distributions.PriorDistribution):
 
         # Create pool for parallel processing
         def initializer():
-            global sim, openmm_context
+            global sim, openmm_context, temperature
+            temperature = self.temperature
             sim = app.Simulation(self.system.topology, self.system.system,
                                  mm.LangevinIntegrator(self.temperature * unit.kelvin,
                                  1.0 / unit.picosecond, 1.0 * unit.femtosecond),
