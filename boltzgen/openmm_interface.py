@@ -69,7 +69,7 @@ class OpenMMEnergyInterfaceParallel(torch.autograd.Function):
         energies = torch.zeros((n_batch, 1))
         forces = torch.zeros((n_batch, n_dim, 3))
 
-        kBT = R * temperature
+        kBT = R * temp
         input = input.cpu().detach().numpy()
         for i in range(n_batch):
             # reshape the coordinates and send to OpenMM
