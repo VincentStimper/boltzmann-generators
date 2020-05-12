@@ -6,9 +6,6 @@ import multiprocessing as mp
 import boltzgen.openmm_interface as omi
 
 from openmmtools.constants import kB
-from simtk import openmm as mm
-from simtk.openmm import app
-from simtk import unit
 
 
 class Boltzmann(nf.distributions.PriorDistribution):
@@ -104,16 +101,8 @@ class TransformedBoltzmannParallel(nf.distributions.PriorDistribution):
         self.n_threads = mp.cpu_count() if n_threads is None else n_threads
 
         # Create pool for parallel processing
-        def initializer(sys, temp_in):
-            global sim, openmm_context, temp
-            temp = temp_in
-            sim = app.Simulation(sys.topology, sys.system,
-                                 mm.LangevinIntegrator(temp * unit.kelvin,
-                                 1.0 / unit.picosecond, 1.0 * unit.femtosecond),
-                                 platform=mm.Platform.getPlatformByName('CPU'))
-            openmm_context = sim.context
-
-        self.pool = mp.Pool(self.n_threads, initializer, (system, temperature))
+        self.pool = mp.Pool(self.n_threads, omi.OpenMMEnergyInterfaceParallel.var_init,
+                            (system, temperature))
 
         # Set up functions
         self.openmm_energy = omi.OpenMMEnergyInterfaceParallel.apply

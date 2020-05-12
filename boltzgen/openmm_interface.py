@@ -1,6 +1,6 @@
 from simtk import openmm as mm
 from simtk.openmm import app
-from simtk.unit import kelvin, kilojoule, mole, nanometer
+from simtk import unit
 import torch
 import numpy as np
 
@@ -33,13 +33,14 @@ class OpenMMEnergyInterface(torch.autograd.Function):
 
                 # get energy
                 energies[i, 0] = (
-                    state.getPotentialEnergy().value_in_unit(kilojoule / mole) / kBT
+                    state.getPotentialEnergy().value_in_unit(
+                        unit.kilojoule / unit.mole) / kBT
                 )
 
                 # get forces
                 f = (
                     state.getForces(asNumpy=True).value_in_unit(
-                        kilojoule / mole / nanometer
+                        unit.kilojoule / unit.mole / unit.nanometer
                     )
                     / kBT
                 )
@@ -60,17 +61,31 @@ class OpenMMEnergyInterfaceParallel(torch.autograd.Function):
     Uses parallel processing to get the energies of the batch of states
     """
     @staticmethod
+    def var_init(sys, temp):
+        """
+        Method to initialize temperature and openmm context for workers
+        of multiprocessing pool
+        """
+        global temperature, openmm_context
+        temperature = temp
+        sim = app.Simulation(sys.topology, sys.system,
+                             mm.LangevinIntegrator(temp * unit.kelvin,
+                                                   1.0 / unit.picosecond,
+                                                   1.0 * unit.femtosecond),
+                             platform=mm.Platform.getPlatformByName('CPU'))
+        openmm_context = sim.context
+
+    @staticmethod
     def batch_proc(input):
         # Process batch  of states
         # openmm context and temperature are passed a global variables
-        global temp, openmm_context
         n_batch = input.shape[0]
         input = input.view(n_batch, -1, 3)
         n_dim = input.shape[1]
         energies = torch.zeros((n_batch, 1))
         forces = torch.zeros((n_batch, n_dim, 3))
 
-        kBT = R * temp
+        kBT = R * temperature
         input = input.cpu().detach().numpy()
         for i in range(n_batch):
             # reshape the coordinates and send to OpenMM
@@ -83,11 +98,12 @@ class OpenMMEnergyInterfaceParallel(torch.autograd.Function):
                 state = openmm_context.getState(getForces=True, getEnergy=True)
 
                 # get energy
-                energies[i, 0] = state.getPotentialEnergy().value_in_unit(kilojoule / mole) / kBT
+                energies[i, 0] = state.getPotentialEnergy().value_in_unit(
+                    unit.kilojoule / unit.mole) / kBT
 
                 # get forces
                 f = state.getForces(asNumpy=True).value_in_unit(
-                    kilojoule / mole / nanometer) / kBT
+                    unit.kilojoule / unit.mole / unit.nanometer) / kBT
                 forces[i, :] = torch.from_numpy(-f)
         forces = forces.view(n_batch, n_dim * 3)
         return energies, forces
