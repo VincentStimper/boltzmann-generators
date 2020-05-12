@@ -108,7 +108,7 @@ class TransformedBoltzmannParallel(nf.distributions.PriorDistribution):
             global sim, openmm_context, temp
             temp = temp_in
             sim = app.Simulation(sys.topology, sys.system,
-                                 mm.LangevinIntegrator(tempe* unit.kelvin,
+                                 mm.LangevinIntegrator(temp * unit.kelvin,
                                  1.0 / unit.picosecond, 1.0 * unit.femtosecond),
                                  platform=mm.Platform.getPlatformByName('CPU'))
             openmm_context = sim.context
