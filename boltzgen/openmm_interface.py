@@ -55,7 +55,58 @@ class OpenMMEnergyInterface(torch.autograd.Function):
         return forces * grad_output, None, None
 
 
-openmm_energy = OpenMMEnergyInterface.apply
+class OpenMMEnergyInterfaceParallel(torch.autograd.Function):
+    """
+    Uses parallel processing to get the energies of the batch of states
+    """
+    @staticmethod
+    def batch_proc(input):
+        # Process batch  of states
+        # openmm context and temperature are passed a global variables
+        n_batch = input.shape[0]
+        input = input.view(n_batch, -1, 3)
+        n_dim = input.shape[1]
+        energies = torch.zeros((n_batch, 1))
+        forces = torch.zeros((n_batch, n_dim, 3))
+
+        kBT = R * temperature
+        input = input.cpu().detach().numpy()
+        for i in range(n_batch):
+            # reshape the coordinates and send to OpenMM
+            x = input[i, :].reshape(-1, 3)
+            # Handle nans and infinities
+            if np.any(np.isnan(x)) or np.any(np.isinf(x)):
+                energies[i, 0] = np.nan
+            else:
+                openmm_context.setPositions(x)
+                state = openmm_context.getState(getForces=True, getEnergy=True)
+
+                # get energy
+                energies[i, 0] = state.getPotentialEnergy().value_in_unit(kilojoule / mole) / kBT
+
+                # get forces
+                f = state.getForces(asNumpy=True).value_in_unit(
+                    kilojoule / mole / nanometer) / kBT
+                forces[i, :] = torch.from_numpy(-f)
+        forces = forces.view(n_batch, n_dim * 3)
+        return energies, forces
+
+    @staticmethod
+    def forward(ctx, input, pool, split_length):
+        device = input.device
+        input_splitted = torch.split(input, split_length)
+        energies_, forces_ = zip(*pool.map(OpenMMEnergyInterfaceParallel.batch_proc,
+                                           input_splitted))
+        energies = torch.cat(energies_)
+        forces = torch.cat(forces_)
+        # Save the forces for the backward step, uploading to the gpu if needed
+        ctx.save_for_backward(forces.to(device=device))
+        return energies.to(device=device)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        forces, = ctx.saved_tensors
+        return forces * grad_output, None, None
 
 
 def regularize_energy(energy, energy_cut, energy_max):
