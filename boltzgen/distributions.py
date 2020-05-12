@@ -1,7 +1,14 @@
 import torch
-import boltzgen.openmm_interface as omi
+import numpy as np
 import normflow as nf
+import multiprocessing as mp
+
+import boltzgen.openmm_interface as omi
+
 from openmmtools.constants import kB
+from simtk import openmm as mm
+from simtk.openmm import app
+from simtk import unit
 
 
 class Boltzmann(nf.distributions.PriorDistribution):
@@ -69,6 +76,60 @@ class TransformedBoltzmann(nf.distributions.PriorDistribution):
     def log_prob(self, z):
         z, _ = self.transform(z)
         return -self.norm_energy(z)
+
+
+class TransformedBoltzmannParallel(nf.distributions.PriorDistribution):
+    """
+    Boltzmann distribution with respect to transformed variables,
+    uses OpenMM to get energy and forces and processes the batch of
+    states in parallel
+    """
+    def __init__(self, system, temperature, energy_cut, energy_max, transform,
+                 n_threads=None):
+        """
+        Constructor
+        :param system: Molecular system
+        :param temperature: Temperature of System
+        :param energy_cut: Energy at which logarithm is applied
+        :param energy_max: Maximum energy
+        :param transfrom: Coordinate transformation
+        :param n_threads: Number of threads to use to process batches, set
+        to the number of cpus if None
+        """
+        # Save input parameters
+        self.system = system
+        self.temperature = temperature
+        self.energy_cut = torch.tensor(energy_cut)
+        self.energy_max = torch.tensor(energy_max)
+        self.n_threads = mp.cpu_count() if n_threads is None else n_threads
+
+        # Create pool for parallel processing
+        def initializer():
+            global sim, openmm_context
+            sim = app.Simulation(self.system.topology, self.system.system,
+                                 mm.LangevinIntegrator(self.temperature * unit.kelvin,
+                                 1.0 / unit.picosecond, 1.0 * unit.femtosecond),
+                                 platform=mm.Platform.getPlatformByName('CPU'))
+            openmm_context = sim.context
+
+        self.pool = mp.Pool(self.n_threads, initializer, ())
+
+        # Set up functions
+        self.openmm_energy = omi.OpenMMEnergyInterfaceParallel.apply
+        self.regularize_energy = omi.regularize_energy
+
+        self.kbT = (kB * self.temperature)._value
+        self.norm_energy = lambda pos, split_length: self.regularize_energy(
+            self.openmm_energy(pos, self.pool, split_length)[:, 0] / self.kbT,
+            self.energy_cut, self.energy_max)
+
+        self.transform = transform
+
+    def log_prob(self, z):
+        n_batch = len(z)
+        split_length = np.ceil(n_batch / self.n_threads).astype(int)
+        z_, _ = self.transform(z)
+        return -self.norm_energy(z_, split_length)
 
 
 class DoubleWell(nf.distributions.PriorDistribution):
