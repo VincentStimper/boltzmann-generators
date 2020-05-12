@@ -127,7 +127,7 @@ class TransformedBoltzmannParallel(nf.distributions.PriorDistribution):
 
     def log_prob(self, z):
         n_batch = len(z)
-        split_length = np.ceil(n_batch / self.n_threads).astype(int)
+        split_length = int(np.ceil(n_batch / self.n_threads))
         z_, _ = self.transform(z)
         return -self.norm_energy(z_, split_length)
 
