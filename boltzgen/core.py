@@ -19,11 +19,12 @@ class BoltzmannGenerator(nf.NormalizingFlow):
         :param force_precision: String, specifies the precision used for force and energy calculations
         :param rnvp_blocks: Int, number of Real NVP blocks, consisting of two alternating Real NVP
         layers each, to use
-        :param actnorm:
-        :param mcmc_layer:
-        :param mcmc_steps:
-        :param proposal_std:
-        :param latent_size:
-        :param hidden_layers:
-        :param hidden_units:
+        :param actnorm: Bool, flag whether to include an ActNorm layer after each Real NVP block
+        :param mcmc_layer: Bool, flag whether to include an MCMC layer after each Real NVP block, i.e.
+        whether to classical or a stochastic normalizing flow
+        :param mcmc_steps: Int, number of MCMC steps to perform
+        :param proposal_std: Float or Double, standard distribution of the proposal distribution
+        :param latent_size: Int, number of features in the latent space
+        :param hidden_layers: Int, number of hidden layers
+        :param hidden_units: Int, number of hidden units
         """
