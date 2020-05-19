@@ -6,8 +6,8 @@ system:                             # Properties of molecular system
   name: AlanineDipeptideImplicit    # String, specifying the system from which states shall be generated
   temperature: 1000                 # Double, temperature of the system
   data_path: null                   # String, path to the data used to initialize transform
-  energy_cut: 1e2                   # Double, energy level at which regularization shall be applied
-  energy_max: 1e20                  # Double, maximum level at which energies will be clamped
+  energy_cut: 1.e+2                 # Double, energy level at which regularization shall be applied
+  energy_max: 1.e+20                # Double, maximum level at which energies will be clamped
   platform: CUDA                    # String, specifies the platform used for force and energy calculations
   precision: double                 # String, specifies the precision used for force and energy calculations
 
