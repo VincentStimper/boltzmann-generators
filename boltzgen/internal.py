@@ -9,7 +9,7 @@ class Transform(nn.Module):
         raise NotImplementedError()
 
     def inverse(self, inputs, context=None):
-        raise InverseNotAvailable()
+        raise NotImplementedError()
 
 
 def calc_bonds(ind1, ind2, coords):
