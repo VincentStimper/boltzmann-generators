@@ -66,7 +66,7 @@ class BoltzmannGenerator(nf.NormalizingFlow):
                                       + ' has not been implemented.')
 
         # Load data for transform if specified
-        if config['system']['data_path'] is not 'None':
+        if config['system']['data_path'] is not None:
             # Load the alanine dipeptide trajectory
             traj = mdtraj.load('/scratch2/vs488/flow/alanine_dipeptide/trajectory/aldp100000.h5')
             traj.center_coordinates()
@@ -104,8 +104,6 @@ class BoltzmannGenerator(nf.NormalizingFlow):
         hidden_units = config['model']['rnvp']['hidden_units']
         hidden_layers = config['model']['rnvp']['hidden_layers']
         output_fn = config['model']['rnvp']['output_fn']
-        if output_fn is 'None':
-            output_fn = None
         output_scale = config['model']['rnvp']['output_scale']
         init_zeros = config['model']['rnvp']['init_zeros']
 
