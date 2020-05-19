@@ -1,11 +1,14 @@
 # Config file specifying the setup of a Boltzmann Generator
 # based on a Real NVP flow model
 
+
+data_path: null                     # String, path to the data used in training and to initialize transform
+
+
 system:                             # Properties of molecular system
 
   name: AlanineDipeptideImplicit    # String, specifying the system from which states shall be generated
   temperature: 1000                 # Double, temperature of the system
-  data_path: null                   # String, path to the data used to initialize transform
   energy_cut: 1.e+2                 # Double, energy level at which regularization shall be applied
   energy_max: 1.e+20                # Double, maximum level at which energies will be clamped
   platform: CUDA                    # String, specifies the platform used for force and energy calculations
@@ -36,3 +39,10 @@ model:                              # Properties of the model
                                     # distribution
     steps: 20                       # Int, number of MCMC steps to perform
 
+
+train:                              # Properties of the training procedure
+  max_iter: 10000                   # Int, maximum number of iteration
+  batch_size: 256                   # Int, batch size used during training
+  learning_rate: 1.e-4              # Double, learning rate used during training
+  checkpoint_iter: 100              # Int, number of iterations after which checkpoint is saved
+  checkpoint_root: ./               # String, path to checkpoint directory
