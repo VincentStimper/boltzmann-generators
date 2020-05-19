@@ -23,6 +23,7 @@ model:                              # Properties of the model
                                     # RNVP, either None, sigmoid, relu, or tanh
     output_scale: 3                 # Double, rescales outputs of NN for scale in RNVP if output_fn is
                                     # specified, i.e. scale * output_fn(out / scale)
+    init_zeros: False               # Bool, flag whether to initialize last layer of NNs with zeros
 
   snf:                              # Properties of the SNF layers
     mcmc: False                     # Bool, flag whether to include an MCMC layer after each Real NVP
