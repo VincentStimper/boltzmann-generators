@@ -66,7 +66,7 @@ class BoltzmannGenerator(nf.NormalizingFlow):
                                       + ' has not been implemented.')
 
         # Load data for transform if specified
-        if config['system']['data_path'] is not None:
+        if config['data_path'] is not None:
             # Load the alanine dipeptide trajectory
             traj = mdtraj.load('/scratch2/vs488/flow/alanine_dipeptide/trajectory/aldp100000.h5')
             traj.center_coordinates()
