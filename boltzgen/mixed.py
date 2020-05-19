@@ -1,12 +1,7 @@
 from .pca import PCATransform
 from .internal import InternalCoordinateTransform
-from . import zmatrix
 import torch
 import torch.nn as nn
-import math
-import numpy as np
-from collections import namedtuple
-import itertools
 
 
 class MixedTransform(nn.Module):

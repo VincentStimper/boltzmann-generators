@@ -3,7 +3,7 @@ import numpy as np
 import normflow as nf
 import multiprocessing as mp
 
-import boltzgen.openmm_interface as omi
+from . import openmm_interface as omi
 
 from openmmtools.constants import kB
 

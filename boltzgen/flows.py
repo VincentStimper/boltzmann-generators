@@ -1,4 +1,4 @@
-import boltzgen.mixed as mixed
+from . import mixed
 import normflow as nf
 
 class CoordinateTransform(nf.flows.Flow):
