@@ -5,7 +5,7 @@ system:                             # Properties of molecular system
 
   name: AlanineDipeptideImplicit    # String, specifying the system from which states shall be generated
   temperature: 1000                 # Double, temperature of the system
-  data_path: None                   # String, path to the data used to initialize transform
+  data_path: null                   # String, path to the data used to initialize transform
   energy_cut: 1e2                   # Double, energy level at which regularization shall be applied
   energy_max: 1e20                  # Double, maximum level at which energies will be clamped
   platform: CUDA                    # String, specifies the platform used for force and energy calculations
@@ -23,7 +23,7 @@ model:                              # Properties of the model
                                     # Real NVP layers each, to use
     hidden_layers: 3                # Int, number of hidden layers
     hidden_units: 128               # Int, number of hidden units
-    output_fn: None                 # String, function to be applied to the output of NN for scale in
+    output_fn: null                 # String, function to be applied to the output of NN for scale in
                                     # RNVP, either None, sigmoid, relu, or tanh
     output_scale: 3                 # Double, rescales outputs of NN for scale in RNVP if output_fn is
                                     # specified, i.e. scale * output_fn(out / scale)
