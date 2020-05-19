@@ -97,7 +97,7 @@ class BoltzmannGenerator(nf.NormalizingFlow):
             p_ = TransformedBoltzmann(self.sim.context, temperature, energy_cut=energy_cut,
                                       energy_max=energy_max, transform=transform)
 
-        latent_size = config['model']['latent']
+        latent_size = config['model']['latent_size']
         q0 = nf.distributions.DiagGaussian(latent_size, trainable=False)
 
         # Set up flow layers
