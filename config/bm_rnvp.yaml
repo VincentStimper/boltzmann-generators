@@ -20,7 +20,7 @@ model:                              # Properties of the model
 
   rnvp:                             # Properties of the Real NVP architecture
     blocks: 5                       # Int, number of Real NVP blocks, consisting of two alternating
-                                    #   Real NVP layers each, to use
+                                    # Real NVP layers each, to use
     hidden_layers: 3                # Int, number of hidden layers
     hidden_units: 128               # Int, number of hidden units
     output_fn: None                 # String, function to be applied to the output of NN for scale in
@@ -31,7 +31,7 @@ model:                              # Properties of the model
 
   snf:                              # Properties of the SNF layers
     mcmc: False                     # Bool, flag whether to include an MCMC layer after each Real NVP
-                                    #   block, i.e. whether to classical or a stochastic normalizing flow
+                                    # block, i.e. whether to classical or a stochastic normalizing flow
     proposal_std: 0.1               # Double, standard deviation of the Diagonal Gaussian proposal
                                     # distribution
     steps: 20                       # Int, number of MCMC steps to perform
