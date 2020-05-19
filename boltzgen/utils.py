@@ -14,9 +14,9 @@ def get_config(path):
         return yaml.load(stream, yaml.FullLoader)
 
 
-def get_coord(path):
+def load_traj(path):
     """
-    Get coordinates from h5 trajectory file as torch tensor
+    Load coordinates from h5 trajectory file as torch tensor
     :param file_path: String, path to h5 trajectory file
     :return: Torch tensor with coordinates
     """
