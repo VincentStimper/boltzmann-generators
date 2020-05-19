@@ -4,11 +4,11 @@
 system:                             # Properties of molecular system
   name: AlanineDipeptideImplicit    # String, specifying the system from which states shall be generated
   temperature: 1000                 # Double, temperature of the system
-  data_transform: None              # String, path to the data used to initialize transform
+  data_path: None                   # String, path to the data used to initialize transform
   energy_cut: 1e2                   # Double, energy level at which regularization shall be applied
   energy_max: 1e20                  # Double, maximum level at which energies will be clamped
-  force_platform: CUDA              # String, specifies the platform used for force and energy calculations
-  force_precision: double           # String, specifies the precision used for force and energy calculations
+  platform: CUDA                    # String, specifies the platform used for force and energy calculations
+  precision: double                 # String, specifies the precision used for force and energy calculations
 
 model:                              # Properties of the model
   latent_size: 60                   # Int, number of features in the latent space
