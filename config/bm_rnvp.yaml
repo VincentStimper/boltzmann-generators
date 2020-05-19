@@ -1,0 +1,31 @@
+# Config file specifying the setup of a Boltzmann Generator
+# based on a Real NVP flow model
+
+system:                             # Properties of molecular system
+  name: AlanineDipeptideImplicit    # String, specifying the system from which states shall be generated
+  temperature: 1000                 # Double, temperature of the system
+  data_transform: None              # String, path to the data used to initialize transform
+  energy_cut: 1e2                   # Double, energy level at which regularization shall be applied
+  energy_max: 1e20                  # Double, maximum level at which energies will be clamped
+  force_platform: CUDA              # String, specifies the platform used for force and energy calculations
+  force_precision: double           # String, specifies the precision used for force and energy calculations
+
+model:                              # Properties of the model
+  latent_size: 60                   # Int, number of features in the latent space
+  rnvp:                             # Properties of the Real NVP architecture
+    blocks: 5                       # Int, number of Real NVP blocks, consisting of two alternating
+                                    # Real NVP layers each, to use
+    hidden_layers: 3                # Int, number of hidden layers
+    hidden_units: 128               # Int, number of hidden units
+    actnorm: True                   # Bool, flag whether to include an ActNorm layer after each
+                                    # Real NVP block
+    output_fn: None                 # String, function to be applied to the output of NN for scale in
+                                    # RNVP, either None, sigmoid, relu, or tanh
+    output_scale: 3                 # Double, rescales outputs of NN for scale in RNVP if output_fn is
+                                    # specified, i.e. scale * output_fn(out / scale)
+
+  snf:                              # Properties of the SNF layers
+    mcmc: False                     # Bool, flag whether to include an MCMC layer after each Real NVP
+                                    # block, i.e. whether to classical or a stochastic normalizing flow
+    steps: 20                       # Int, number of MCMC steps to perform
+
