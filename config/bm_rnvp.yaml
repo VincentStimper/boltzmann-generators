@@ -2,6 +2,7 @@
 # based on a Real NVP flow model
 
 system:                             # Properties of molecular system
+
   name: AlanineDipeptideImplicit    # String, specifying the system from which states shall be generated
   temperature: 1000                 # Double, temperature of the system
   data_path: None                   # String, path to the data used to initialize transform
@@ -10,14 +11,16 @@ system:                             # Properties of molecular system
   platform: CUDA                    # String, specifies the platform used for force and energy calculations
   precision: double                 # String, specifies the precision used for force and energy calculations
 
+
 model:                              # Properties of the model
+
   latent_size: 60                   # Int, number of features in the latent space
   actnorm: True                     # Bool, flag whether to include an ActNorm layer after each
                                     # Real NVP block
 
   rnvp:                             # Properties of the Real NVP architecture
     blocks: 5                       # Int, number of Real NVP blocks, consisting of two alternating
-                                    # Real NVP layers each, to use
+                                    #   Real NVP layers each, to use
     hidden_layers: 3                # Int, number of hidden layers
     hidden_units: 128               # Int, number of hidden units
     output_fn: None                 # String, function to be applied to the output of NN for scale in
@@ -28,6 +31,8 @@ model:                              # Properties of the model
 
   snf:                              # Properties of the SNF layers
     mcmc: False                     # Bool, flag whether to include an MCMC layer after each Real NVP
-                                    # block, i.e. whether to classical or a stochastic normalizing flow
+                                    #   block, i.e. whether to classical or a stochastic normalizing flow
+    proposal_std: 0.1               # Double, standard deviation of the Diagonal Gaussian proposal
+                                    # distribution
     steps: 20                       # Int, number of MCMC steps to perform
 
