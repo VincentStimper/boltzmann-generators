@@ -44,5 +44,6 @@ train:                              # Properties of the training procedure
   max_iter: 10000                   # Int, maximum number of iteration
   batch_size: 256                   # Int, batch size used during training
   learning_rate: 1.e-4              # Double, learning rate used during training
+  weight_decay: 1.e-5               # Double, regularization parameter
   checkpoint_iter: 100              # Int, number of iterations after which checkpoint is saved
   checkpoint_root: ./               # String, path to checkpoint directory
