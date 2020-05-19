@@ -8,4 +8,4 @@ def get_config(file_path):
     """
 
     with open(file_path, 'r') as stream:
-        return yaml.load(stream)
+        return yaml.load(stream, yaml.FullLoader)
