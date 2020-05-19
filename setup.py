@@ -18,12 +18,12 @@ install_requires = [x.strip() for x in all_reqs if 'git+' not in x]
 dependency_links = [x.strip().replace('git+', '') for x in all_reqs if x.startswith('git+')]
 
 setup(
-    name='normflow',
+    name='boltzgen',
     version=__version__,
-    description='Pytorch implementation of normalizing flows',
+    description='PyTorch implementation of Boltzmann Generators',
     long_description=long_description,
-    url='https://github.com/VincentStimper/normalizing-flows',
-    download_url='https://github.com/VincentStimper/normalizing-flows/tarball/' + __version__,
+    url='https://github.com/VincentStimper/boltzmann-generators',
+    download_url='https://github.com/VincentStimper/boltzmann-generators/tarball/' + __version__,
     license='MIT',
     classifiers=[
       'Development Status :: 3 - Alpha',
@@ -33,7 +33,7 @@ setup(
     keywords='',
     packages=find_packages(exclude=['docs', 'tests*']),
     include_package_data=True,
-    author=['Vincent Stimper', 'Lukas Ryll', 'David Liu'],
+    author=['Vincent Stimper', 'Andrew Campbell'],
     install_requires=install_requires,
     dependency_links=dependency_links,
     author_email=''
