@@ -51,7 +51,7 @@ class TransformedBoltzmann(nf.distributions.PriorDistribution):
         :param temperature: Temperature of System
         :param energy_cut: Energy at which logarithm is applied
         :param energy_max: Maximum energy
-        :param transfrom: Coordinate transformation
+        :param transform: Coordinate transformation
         """
         # Save input parameters
         self.sim_context = sim_context
