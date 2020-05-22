@@ -50,6 +50,7 @@ loss_hist = np.array([])
 
 optimizer = torch.optim.Adam(model.parameters(), lr=config['train']['learning_rate'],
                              weight_decay=config['train']['weight_decay'])
+lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer=optimizer, gamma=config['train']['rate_decay'])
 for it in range(max_iter):
     optimizer.zero_grad()
     ind = torch.randint(n_data, (batch_size, ))
@@ -66,4 +67,7 @@ for it in range(max_iter):
         model.save(checkpoint_path + 'checkpoints/bm_snf_model_%05i.pt' % (it + 1))
         torch.save(optimizer.state_dict(), checkpoint_path + 'checkpoints/bm_snf_optimizer.pt')
         np.savetxt(checkpoint_path + 'log/loss.csv', loss_hist)
+    
+    if (it + 1) % config['train']['decay_iter'] == 0:
+        lr_scheduler.step()
     
