@@ -89,7 +89,7 @@ class TransformedBoltzmannParallel(nf.distributions.PriorDistribution):
         :param temperature: Temperature of System
         :param energy_cut: Energy at which logarithm is applied
         :param energy_max: Maximum energy
-        :param transfrom: Coordinate transformation
+        :param transform: Coordinate transformation
         :param n_threads: Number of threads to use to process batches, set
         to the number of cpus if None
         """
