@@ -126,8 +126,11 @@ class BoltzmannGenerator(nf.NormalizingFlow):
 
             # MCMC layer
             if config['model']['snf']['mcmc']:
-                dist = nf.distributions.LinearInterpolation(p_, q0,
-                                                            config['model']['snf']['lambda'][i])
+                if 'lambda' in config['model']['snf'].keys():
+                    lam = config['model']['snf']['lambda'][i]
+                else:
+                    lam = (i + 1) / rnvp_blocks
+                dist = nf.distributions.LinearInterpolation(p_, q0, lam)
                 prop_scale = config['model']['snf']['proposal_std'] * np.ones(latent_size)
                 proposal = nf.distributions.DiagGaussianProposal((latent_size,), prop_scale)
                 flows += [nf.flows.MetropolisHastings(dist, proposal,
