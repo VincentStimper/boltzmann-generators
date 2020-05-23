@@ -24,7 +24,7 @@ class BoltzmannGenerator(nf.NormalizingFlow):
 
         self.config = config
         # Set up simulation object
-        if config['system']['name'] == 'AlanineDipeptideImplicit':
+        if config['system']['name'] == 'AlanineDipeptideVacuum':
             ndim = 66
             z_matrix = [
                 (1, [4, 5, 6]),
@@ -45,7 +45,7 @@ class BoltzmannGenerator(nf.NormalizingFlow):
             backbone_indices = [4, 5, 6, 8, 14, 15, 16, 18]
             temperature = config['system']['temperature']
 
-            self.system = testsystems.AlanineDipeptideImplicit()
+            self.system = testsystems.AlanineDipeptideVacuum()
             if config['system']['platform'] == 'CPU':
                 self.sim = app.Simulation(self.system.topology, self.system.system,
                                           mm.LangevinIntegrator(temperature * unit.kelvin,

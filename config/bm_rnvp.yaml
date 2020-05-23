@@ -7,7 +7,7 @@ data_path: null                     # String, path to the data used in training 
 
 system:                             # Properties of molecular system
 
-  name: AlanineDipeptideImplicit    # String, specifying the system from which states shall be generated
+  name: AlanineDipeptideVacuum      # String, specifying the system from which states shall be generated
   temperature: 1000                 # Double, temperature of the system
   energy_cut: 1.e+2                 # Double, energy level at which regularization shall be applied
   energy_max: 1.e+20                # Double, maximum level at which energies will be clamped
