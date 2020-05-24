@@ -71,8 +71,8 @@ class TransformedBoltzmann(nf.distributions.PriorDistribution):
         self.transform = transform
 
     def log_prob(self, z):
-        z, _ = self.transform(z)
-        return -self.norm_energy(z)
+        z, log_det = self.transform(z)
+        return -self.norm_energy(z) + log_det
 
 
 class TransformedBoltzmannParallel(nf.distributions.PriorDistribution):
