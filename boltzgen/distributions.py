@@ -29,9 +29,8 @@ class Boltzmann(nf.distributions.PriorDistribution):
         self.openmm_energy = omi.OpenMMEnergyInterface.apply
         self.regularize_energy = omi.regularize_energy
 
-        self.kbT = (kB * self.temperature)._value
         self.norm_energy = lambda pos: self.regularize_energy(
-            self.openmm_energy(pos, self.sim_context, temperature)[:, 0] / self.kbT,
+            self.openmm_energy(pos, self.sim_context, temperature)[:, 0],
             self.energy_cut, self.energy_max)
 
     def log_prob(self, z):
@@ -63,9 +62,8 @@ class TransformedBoltzmann(nf.distributions.PriorDistribution):
         self.openmm_energy = omi.OpenMMEnergyInterface.apply
         self.regularize_energy = omi.regularize_energy
 
-        self.kbT = (kB * self.temperature)._value
         self.norm_energy = lambda pos: self.regularize_energy(
-            self.openmm_energy(pos, self.sim_context, temperature)[:, 0] / self.kbT,
+            self.openmm_energy(pos, self.sim_context, temperature)[:, 0],
             self.energy_cut, self.energy_max)
 
         self.transform = transform
@@ -108,9 +106,8 @@ class TransformedBoltzmannParallel(nf.distributions.PriorDistribution):
         self.openmm_energy = omi.OpenMMEnergyInterfaceParallel.apply
         self.regularize_energy = omi.regularize_energy
 
-        self.kbT = (kB * self.temperature)._value
         self.norm_energy = lambda pos, splits: self.regularize_energy(
-            self.openmm_energy(pos, self.pool, splits)[:, 0] / self.kbT,
+            self.openmm_energy(pos, self.pool, splits)[:, 0],
             self.energy_cut, self.energy_max)
 
         self.transform = transform
