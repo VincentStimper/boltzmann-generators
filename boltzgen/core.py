@@ -126,15 +126,24 @@ class BoltzmannGenerator(nf.NormalizingFlow):
 
             # MCMC layer
             if config['model']['snf']['mcmc']:
-                if 'lambda' in config['model']['snf'].keys():
-                    lam = config['model']['snf']['lambda'][i]
-                else:
-                    lam = (i + 1) / rnvp_blocks
-                dist = nf.distributions.LinearInterpolation(p_, q0, lam)
                 prop_scale = config['model']['snf']['proposal_std'] * np.ones(latent_size)
                 proposal = nf.distributions.DiagGaussianProposal((latent_size,), prop_scale)
-                flows += [nf.flows.MetropolisHastings(dist, proposal,
-                                                      config['model']['snf']['steps'])]
+                steps = config['model']['snf']['steps']
+                if 'lambda_min' in config['model']['snf'].keys() and \
+                    'lambda_max' in config['model']['snf'].keys():
+                    lam_min = config['model']['snf']['lambda_min']
+                    lam_max = config['model']['snf']['lambda_max']
+                    for i in range(steps):
+                        lam = lam_min + (lam_max - lam_min) * i / (steps - 1)
+                        dist = nf.distributions.LinearInterpolation(p_, q0, lam)
+                        flows += [nf.flows.MetropolisHastings(dist, proposal, 1)]
+                else:
+                    if 'lambda' in config['model']['snf'].keys():
+                        lam = config['model']['snf']['lambda'][i]
+                    else:
+                        lam = (i + 1) / rnvp_blocks
+                    dist = nf.distributions.LinearInterpolation(p_, q0, lam)
+                    flows += [nf.flows.MetropolisHastings(dist, proposal, steps)]
         # Coordinate transformation
         flows += [transform]
 

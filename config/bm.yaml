@@ -44,6 +44,18 @@ model:                              # Properties of the model
       - 0.98
       - 0.99
       - 1.0
+    lambda_min:                     # Double array, interpolation parameters between Boltzmann and
+      - 0.1                         # initial distribution, if lambda_min and max are specified,
+      - 0.3                         # lambda is linearly interpolated within the given interval
+      - 0.5                         # in each MCMC layer
+      - 0.7
+      - 0.9
+    lambda_max:
+      - 0.2
+      - 0.4
+      - 0.6
+      - 0.8
+      - 1.0
 
 
 train:                              # Properties of the training procedure
