@@ -11,7 +11,7 @@ import argparse
 parser = argparse.ArgumentParser(description='Train Stochastic Normalizing Flow as a Boltzmann Generator')
 
 parser.add_argument('--config', type=str, help='Path config file specifying model architecture and training procedure',
-                    default='../config/bm_rnvp.yaml')
+                    default='../config/bm.yaml')
 
 args = parser.parse_args()
 
