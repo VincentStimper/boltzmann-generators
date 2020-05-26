@@ -133,8 +133,8 @@ class BoltzmannGenerator(nf.NormalizingFlow):
                     'lambda_max' in config['model']['snf'].keys():
                     lam_min = config['model']['snf']['lambda_min']
                     lam_max = config['model']['snf']['lambda_max']
-                    for i in range(steps):
-                        lam = lam_min + (lam_max - lam_min) * i / (steps - 1)
+                    for j in range(steps):
+                        lam = lam_min[i] + (lam_max[i] - lam_min[i]) * j / (steps - 1)
                         dist = nf.distributions.LinearInterpolation(p_, q0, lam)
                         flows += [nf.flows.MetropolisHastings(dist, proposal, 1)]
                 else:
