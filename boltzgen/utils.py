@@ -6,7 +6,7 @@ import math
 Compute the KSD divergence using samples, adapted from the theano code
 """
 # From https://github.com/YingzhenLi/SteinGrad/blob/master/hamiltonian/ksd.py
-def KSD(z, Sqx):
+def KSD(z, Sqx, in_h_square=None):
 
     # compute the rbf kernel
     K, dimZ = z.shape
@@ -15,6 +15,8 @@ def KSD(z, Sqx):
     # use median
     median = np.median(pdist_square)
     h_square = 0.5 * median / np.log(K+1.0)
+    if in_h_square is not None:
+        h_square = in_h_square
     Kxy = np.exp(- pdist_square / h_square / 2.0)
 
     # now compute KSD
@@ -35,7 +37,6 @@ def blockKSD(z, Sqx, num_blocks, h_square):
     block_step = math.floor(K/num_blocks)
     culm_sum = 0
     for i in range(0, K, block_step):
-        print("i", i)
         for j in range(0, K, block_step):
             zrow = z[i:i+block_step, :]
             zcol = z[j:j+block_step, :]

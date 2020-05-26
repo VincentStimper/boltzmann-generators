@@ -35,7 +35,8 @@ implicit_sim.context.setPositions(testsystem.positions)
 openmm_energy = omi.OpenMMEnergyInterface.apply
 
 # Load the training data 
-aldp_traj = mdtraj.load('saved_data/aldp_training_data.h5')
+# aldp_traj = mdtraj.load('saved_data/aldp_training_data.h5')
+aldp_traj = mdtraj.load('implicit_aldp_training_data.h5')
 
 z = [
     (1, [4, 5, 6]),
@@ -208,7 +209,7 @@ def fix_dih(x):
 
 #%%
 # ---------- Train different lengths of chain -----------
-for length in range(10, 100, 10):
+for length in range(80, 110, 10):
     print(length)
     hmc = HMC(length)
     optimizer = torch.optim.Adam(hmc.parameters(), lr=1e-3)
@@ -252,84 +253,18 @@ for iter in tqdm(range(21000, 100000)):
 
 #%%
 # ---------- Test flow marginals ---------
+%matplotlib inline
 flow_samples, _ = nfm.sample(10000)
 flow_samples, _ = flows[-1].inverse(flow_samples)
 flow_samples = flow_samples.detach().numpy()
 x_np = x.detach().numpy()
 import scipy.stats
-for i in range(60):
-    kde_flow = scipy.stats.gaussian_kde(flow_samples[:, i])
+plot_dims = [23, 32, 35, 41, 53]
+for i in plot_dims:
+    kde_flow = scipy.stats.gaussian_kde(fix_dih(flow_samples[:, i]))
     kde_data = scipy.stats.gaussian_kde(x_np[:, i])
-    positions = np.linspace(-10, 10, 1000)
+    positions = np.linspace(-4, 4, 1000)
     plt.plot(positions, kde_data(positions))
     plt.plot(positions, kde_flow(positions))
     plt.show()
 
-#%%
-# ---------- KSD ------------
-import glob
-import scipy.stats
-from scipy.spatial.distance import pdist, squareform
-# Create dummy HMC just to use it's grad log p function
-hmc_dummy = HMC(42)
-
-# HMC
-# first estimate the median
-medians = np.array([])
-for length in range(10, 40, 10):
-    smp_files = glob.glob('saved_data/hmc_samples/hmc_samples_10000_length_{}_uid_*'.\
-        format(length))
-    data = np.load(smp_files[0])
-    medians = np.append(medians, get_median_estimate(data))
-print("medians", medians)
-median = np.median(medians)
-h_square = 0.5 * median / np.log(100001)
-
-
-for length_i, length in enumerate(range(10, 40, 10)):
-    print("length", length)
-    smp_files = glob.glob('saved_data/hmc_samples/hmc_samples_10000_length_{}_uid_*'.\
-        format(length))
-    tot_samples = np.zeros((100000, 60))
-    for file_i, smp_file in enumerate(smp_files):
-        data = np.load(smp_file)
-        tot_samples[file_i*10000:(file_i+1)*10000, :] = data
-    samples = torch.tensor(tot_samples)
-    gradlogp = hmc_dummy.gradlogP(samples)
-    print("KSD", blockKSD(tot_samples, gradlogp.detach().numpy(), 10, h_square))
-    
-
-
-# %%
-# ---------- Test HMC marginals ------------
-
-# draw samples
-# for length in range(10, 80, 10):
-# print(length)
-# hmc = HMC(length)
-# hmc.load_state_dict(torch.load('models/hmc_100iter_length{}'.format(length)))
-# flow_samples, _ = nfm.sample(1000)
-# flow_samples, _ = flows[-1].inverse(flow_samples)
-# hmc_samples = hmc.draw_samples(flow_samples)
-# hmc_samples = hmc_samples.detach().numpy()
-# np.save('saved_data/length_{}_1000samples'.format(length), hmc_samples)
-x_np = x.detach().numpy()
-flow_samples = flow_samples.detach().numpy()
-import scipy.stats
-plot_dims = [23, 32, 35, 41, 53]
-for length in range(10, 80, 10):
-    print("**************************")
-    print(length)
-    hmc_samples = np.load('saved_data/length_{}_1000samples.npy'.format(length))
-    for i in plot_dims:
-        kde_hmc = scipy.stats.gaussian_kde(fix_dih(hmc_samples[:, i]))
-        kde_flow = scipy.stats.gaussian_kde(fix_dih(flow_samples[:, i]))
-        kde_data = scipy.stats.gaussian_kde(x_np[:, i])
-        positions = np.linspace(-4, 4, 1000)
-        plt.plot(positions, kde_data(positions))
-        plt.plot(positions, kde_flow(positions))
-        plt.plot(positions, kde_hmc(positions))
-        plt.show()
-
-
-# %%
