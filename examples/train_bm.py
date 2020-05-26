@@ -11,7 +11,7 @@ import argparse
 parser = argparse.ArgumentParser(description='Train Stochastic Normalizing Flow as a Boltzmann Generator')
 
 parser.add_argument('--config', type=str, help='Path config file specifying model architecture and training procedure',
-                    default='../config/bm_rnvp.yaml')
+                    default='../config/bm.yaml')
 
 args = parser.parse_args()
 
@@ -64,8 +64,8 @@ for it in range(max_iter):
     loss_hist = np.append(loss_hist, loss.to('cpu').data.numpy())
     
     if (it + 1) % checkpoint_step == 0:
-        model.save(checkpoint_path + 'checkpoints/bm_snf_model_%05i.pt' % (it + 1))
-        torch.save(optimizer.state_dict(), checkpoint_path + 'checkpoints/bm_snf_optimizer.pt')
+        model.save(checkpoint_path + 'checkpoints/model_%05i.pt' % (it + 1))
+        torch.save(optimizer.state_dict(), checkpoint_path + 'checkpoints/optimizer.pt')
         np.savetxt(checkpoint_path + 'log/loss.csv', loss_hist)
     
     if (it + 1) % config['train']['decay_iter'] == 0:
