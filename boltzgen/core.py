@@ -68,7 +68,7 @@ class BoltzmannGenerator(nf.NormalizingFlow):
         # Load data for transform if specified
         if config['data_path'] is not None:
             # Load the alanine dipeptide trajectory
-            traj = mdtraj.load('/scratch2/vs488/flow/alanine_dipeptide/trajectory/aldp100000.h5')
+            traj = mdtraj.load(config['data_path'])
             traj.center_coordinates()
 
             # superpose on the backbone
