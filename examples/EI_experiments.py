@@ -268,3 +268,407 @@ for i in plot_dims:
     plt.plot(positions, kde_flow(positions))
     plt.show()
 
+#%%
+# ---------- KSD ------------
+import glob
+import scipy.stats
+from scipy.spatial.distance import pdist, squareform
+# Create dummy HMC just to use it's grad log p function
+hmc_dummy = HMC(42)
+
+# HMC
+all_samples = np.zeros((7, 100000, 60))
+for i, length in enumerate(range(10, 80, 10)):
+    all_samples[i, :, :] = np.load(
+        'saved_data/hmc_samples/manual_hmc_samples_100000_length_{}.npy'.format(length))
+
+# first estimate the median
+medians = np.array([])
+for i in range(7):
+    medians = np.append(medians, get_median_estimate(all_samples[i, :, :]))
+print("medians", medians)
+median = np.median(medians)
+h_square = 0.5 * median / np.log(100001)
+print("h_sqare", h_square)
+
+# get KSDs
+ksds = []
+for i in range(7):
+    samples = torch.tensor(all_samples[i,:,:])
+    gradlogp = hmc_dummy.gradlogP(samples)
+    ksd = blockKSD(all_samples[i,:,:], gradlogp.detach().numpy(), 10, h_square)
+    print("KSD", ksd)
+    ksds.append(ksd)
+
+#%%
+%matplotlib qt
+plt.plot(np.arange(10, 80, 10), ksds)
+plt.xlabel('length')
+plt.ylabel('ksd')
+plt.show()
+#%%
+ksds = np.array(ksds)
+np.savetxt('saved_data/100K_length_ksds', ksds)
+
+
+# %%
+# ---------- Test HMC marginals ------------
+
+# draw samples
+# for length in range(10, 80, 10):
+# print(length)
+# hmc = HMC(length)
+# hmc.load_state_dict(torch.load('models/hmc_100iter_length{}'.format(length)))
+# flow_samples, _ = nfm.sample(1000)
+# flow_samples, _ = flows[-1].inverse(flow_samples)
+# hmc_samples = hmc.draw_samples(flow_samples)
+# hmc_samples = hmc_samples.detach().numpy()
+# np.save('saved_data/length_{}_1000samples'.format(length), hmc_samples)
+
+
+# flow_samples = flow_samples.detach().numpy()
+
+# %matplotlib inline
+%matplotlib qt
+
+x_np = x.detach().numpy()
+all_manual_samples = np.zeros((10, 100000, 60))
+for i, length in enumerate(range(10, 110, 10)):
+    all_manual_samples[i, :, :] = np.load(
+        'saved_data/hmc_samples/manual_hmc_samples_100000_length_{}.npy'.format(length))
+all_ei_samples = np.zeros((10, 100000, 60))
+for i, length in enumerate(range(10, 110, 10)):
+    all_ei_samples[i, :, :] = np.load(
+        'saved_data/hmc_samples/hmc_samples_100000_length_{}.npy'.format(length))
+import scipy.stats
+plot_dims = [23, 32, 35, 41, 53]
+eps = 1e-5
+kls = np.zeros((10, 5))
+fig, ax = plt.subplots(4, 5)
+kde_eis = []
+kde_mans = []
+kde_datas = []
+for l_id, length in enumerate(range(10, 50, 10)):
+    print("**************************")
+    print(length)
+    # if np.any(np.isnan(all_samples[l_id, :, :])):
+    #     print("has nans")
+    #     print(np.count_nonzero(np.isnan(all_samples[l_id, :, :])))
+    #     all_samples[l_id, np.isnan(all_samples[l_id, :, :])] = 0
+    eis = []
+    mans = []
+    datas = []
+    for idx, i in enumerate(plot_dims):
+        kde_ei_hmc = scipy.stats.gaussian_kde(fix_dih(all_ei_samples[l_id, :, i]))
+        eis.append(kde_ei_hmc)
+        kde_man_hmc = scipy.stats.gaussian_kde(fix_dih(all_manual_samples[l_id, :, i]))
+        mans.append(kde_man_hmc)
+        kde_data = scipy.stats.gaussian_kde(x_np[:, i])
+        datas.append(kde_data)
+        positions = np.linspace(-4, 4, 1000)
+        def kl(x):
+            q = kde_data
+            p = kde_ei_hmc
+            return q(x) * (np.log(q(x) + eps) - np.log(p(x) + eps))
+        # kls[l_id, idx] = scipy.integrate.quad(kl, -4, 4)[0]
+        ax[l_id, idx].plot(positions, kde_data(positions), label='data')
+        ax[l_id, idx].plot(positions, kde_ei_hmc(positions), label='EI')
+        ax[l_id, idx].plot(positions, kde_man_hmc(positions), label='manual')
+    kde_eis.append(eis)
+    kde_mans.append(mans)
+    kde_datas.append(datas)
+    # print("mean kl", np.mean(kls[l_id, :]))
+plt.legend()
+plt.show()
+
+
+#%%
+import matplotlib.pyplot as plt
+%matplotlib qt
+fig, ax = plt.subplots(4, 5)
+for i in range(4):
+    for j in range(5):
+        positions = np.linspace(-4, 4, 1000)
+        ax[i, j].plot(positions, kde_datas[i][j](positions), label='data')
+        ax[i, j].plot(positions, kde_eis[i][j](positions), label='EI')
+        ax[i, j].plot(positions, kde_datas[i][j](positions), label='manual')
+plt.legend()
+plt.show()
+
+# %%
+kls_ei = np.loadtxt('saved_data/100K_KLS_EI.txt')
+kls_manual = np.loadtxt('saved_data/100K_KLS_manual.txt')
+plt.plot(np.arange(10, 110, 10), np.mean(kls_ei, axis=1), label='ei')
+plt.plot(np.arange(10, 110, 10), np.mean(kls_manual, axis=1), label='manual')
+plt.legend()
+plt.show()
+
+
+
+# %%
+# ------------ Test manual HMC ---------------
+import glob
+import scipy.stats
+x_np = x.detach().numpy()
+plot_dims = [23, 32, 35, 41, 53]
+eps = 1e-5
+files = glob.glob('saved_data/man_hmc/hmc_samples_1000_length_30_*')
+hmc_dummy = HMC(42)
+
+#load
+logstuff = np.zeros((100, 2))
+all_samples = np.zeros((100, 1000, 60))
+for file_idx, file in enumerate(files):
+    logeps = float(file[file.find('eps_')+4:file.find('_logmass')])
+    logmass = float(file[file.find('logmass_')+8:file.find('.npy')])
+    logstuff[file_idx, 0] = logeps
+    logstuff[file_idx, 1] = logmass
+    all_samples[file_idx, :, :] = np.load(file)
+
+
+medians = np.array([])
+for i in range(100):
+    medians = np.append(medians, get_median_estimate(all_samples[i, :, :]))
+print("medians", medians)
+median = np.median(medians)
+h_square = 0.5 * median / np.log(1001)
+
+# get stats
+params_vs_stats = np.zeros((100, 4))
+for i in range(100):
+    print(i)
+    samples = torch.tensor(all_samples[i,:,:])
+    gradlogp = hmc_dummy.gradlogP(samples)
+    ksd = blockKSD(all_samples[i,:,:], gradlogp.detach().numpy(), 10, h_square)
+
+    kls = np.zeros((5,))
+    for idx, dim in enumerate(plot_dims):
+        kde_hmc = scipy.stats.gaussian_kde(fix_dih(samples[:, dim]))
+        kde_data = scipy.stats.gaussian_kde(x_np[:, dim])
+        positions = np.linspace(-4, 4, 1000)
+        def kl(x):
+            q = kde_data
+            p = kde_hmc
+            return q(x) * (np.log(q(x) + eps) - np.log(p(x) + eps))
+        kls[idx] = scipy.integrate.quad(kl, -4, 4)[0]
+    params_vs_stats[i, 0] = logstuff[i, 0]
+    params_vs_stats[i, 1] = logstuff[i, 1]
+    params_vs_stats[i, 2] = np.mean(kls)
+    params_vs_stats[i, 3] = ksd
+    
+
+
+
+#%%
+
+plt.scatter(params_vs_stats[:, 0], params_vs_stats[:, 1],
+    c=params_vs_stats[:, 3], s=100)
+plt.gray()
+
+plt.show()
+id_min = np.argmin(params_vs_stats[:, 2])
+print(params_vs_stats[id_min, :])
+print(params_vs_stats)
+
+
+
+
+
+# %%
+# ---------- Plot HMC marginals
+
+x_np = x.detach().numpy()
+all_manual_samples = np.zeros((10, 100000, 60))
+for i, length in enumerate(range(10, 110, 10)):
+    all_manual_samples[i, :, :] = np.load(
+        'saved_data/hmc_samples/manual_hmc_samples_100000_length_{}.npy'.format(length))
+all_ei_samples = np.zeros((10, 100000, 60))
+for i, length in enumerate(range(10, 110, 10)):
+    all_ei_samples[i, :, :] = np.load(
+        'saved_data/hmc_samples/hmc_samples_100000_length_{}.npy'.format(length))
+import scipy.stats
+l_id = 0
+for i in range(60):
+    kde_ei_hmc = scipy.stats.gaussian_kde(fix_dih(all_ei_samples[l_id, :, i]))
+    kde_man_hmc = scipy.stats.gaussian_kde(fix_dih(all_manual_samples[l_id, :, i]))
+    kde_data = scipy.stats.gaussian_kde(x_np[:, i])
+    positions = np.linspace(-4, 4, 1000)
+    plt.plot(positions, kde_data(positions), label='data')
+    plt.plot(positions, kde_ei_hmc(positions), label='EI')
+    plt.plot(positions, kde_man_hmc(positions), label='manual')
+    plt.legend()
+    plt.show()
+
+
+# %%
+# ------------ Plots KLS against each other -----------
+%matplotlib qt
+ei_data = np.loadtxt('saved_data/100K_KLS_EI.txt')
+man_data = np.loadtxt('saved_data/100K_KLS_manual.txt')
+
+plt.plot(np.arange(10, 110, 10), np.mean(ei_data, 1), label='EI')
+plt.plot(np.arange(10, 110, 10), np.mean(man_data, 1), label='manual')
+plt.legend()
+plt.xlabel('HMC length')
+plt.ylabel('Average KL divergence')
+plt.show()
+#%%
+# -------- Plots KSDS against each other ----------
+%matplotlib qt
+ei_data = np.loadtxt('saved_data/100K_length_ksds_ei')
+man_data = np.loadtxt('saved_data/100K_length_ksds_manual')
+plt.plot(np.arange(10, 80, 10), ei_data, label='EI')
+# plt.plot(np.arange(10, 80, 10), man_data, label='manual')
+plt.plot(np.arange(10, 80, 10), 0.005239*np.ones(7), label='Training data',
+    linestyle = '--')
+plt.plot(np.arange(10, 80, 10), 0.02297*np.ones(7),
+    label='Manually tuned at length 30', linestyle='--')
+plt.legend(loc= 'center right')
+plt.xlabel('HMC length')
+plt.ylabel('KSD')
+plt.show()
+
+
+
+# %%
+# ---------- See how the training does on KSD ----------
+dummy_hmc = HMC(42)
+
+x_np = x.detach().numpy()
+median = get_median_estimate(x_np)
+h_square = 0.5 * median / np.log(100001)
+print("h_square", h_square)
+
+gradlogp = dummy_hmc.gradlogP(x)
+ksd = blockKSD(x_np, gradlogp.detach().numpy(), 10, 5.6015)
+
+print(ksd)
+
+
+# %%
+# ---------- Subsamples the manual HMCs KSD -----------
+import glob
+import scipy.stats
+x_np = x.detach().numpy()
+files = glob.glob('saved_data/grid_man_samples/*')
+print(len(files))
+hmc_dummy = HMC(42)
+
+#load
+logstuff = np.zeros((47, 2))
+all_samples = np.zeros((47, 3000, 60))
+for file_idx, file in enumerate(files):
+    logeps = float(file[file.find('eps_')+4:file.find('_logmass')])
+    logmass = float(file[file.find('logmass_')+8:file.find('.npy')])
+    logstuff[file_idx, 0] = logeps
+    logstuff[file_idx, 1] = logmass
+    all_samples[file_idx, :, :] = np.load(file)
+
+h_square = 5.6015
+
+# get stats
+params_vs_stats = np.zeros((47, 5))
+for i in range(47):
+    print(i)
+    samples = torch.tensor(all_samples[i,:,:])
+    gradlogp = hmc_dummy.gradlogP(samples).detach().numpy()
+    params_vs_stats[i, 2] = KSD(all_samples[i,0:1000,:],
+        gradlogp[0:1000,:], h_square)
+    params_vs_stats[i, 3] = KSD(all_samples[i,1000:2000,:],
+        gradlogp[1000:2000,:], h_square)
+    params_vs_stats[i, 4] = KSD(all_samples[i,2000:3000,:],
+        gradlogp[2000:3000,:], h_square)
+    params_vs_stats[i, 0] = logstuff[i, 0]
+    params_vs_stats[i, 1] = logstuff[i, 1]
+
+np.savetxt('saved_data/man_hmc_length_30_grid_KSDS_3repeats_of_1000_v3.txt',
+    params_vs_stats)
+
+# %%
+# ---------- Check 100K manual tune KSD ----------
+dummy_hmc = HMC(42)
+
+samples_np = np.load('saved_data/ksd_man_hmc/100K_-6logeps_-1_5logmass.npy')
+samples = torch.tensor(samples_np)
+gradlogp = dummy_hmc.gradlogP(samples)
+ksd = blockKSD(samples_np, gradlogp.detach().numpy(), 10, 5.6015)
+
+print(ksd)
+
+
+# %%
+# ----------- break 100K manual tune KSD into 10 and compare to EI ------
+dummy_hmc = HMC(42)
+man_samples_np = np.load('saved_data/ksd_man_hmc/100K_-6logeps_-1_5logmass.npy')
+ei_samples_np = np.load('saved_data/hmc_samples/hmc_samples_100000_length_30.npy')
+man_samples = torch.tensor(man_samples_np)
+ei_samples = torch.tensor(ei_samples_np)
+x_np = x.detach().numpy()
+flow_samples, _ = nfm.sample(100000)
+flow_samples, _ = flows[-1].inverse(flow_samples)
+flow_samples_np = flow_samples.detach().numpy()
+
+ei_ksds = []
+man_ksds = []
+x_ksds = []
+flow_ksds = []
+for i in range(10):
+    ei_gradlogp = dummy_hmc.gradlogP(ei_samples[i*10000:(i+1)*10000,:]).detach().numpy()
+    man_gradlogp = dummy_hmc.gradlogP(man_samples[i*10000:(i+1)*10000,:]).detach().numpy()
+    x_gradlogp = dummy_hmc.gradlogP(x[i*10000:(i+1)*10000,:]).detach().numpy()
+    flow_gradlogp = dummy_hmc.gradlogP(flow_samples[i*10000:(i+1)*10000,:]).detach().numpy()
+    ei_ksd = KSD(ei_samples_np[i*10000:(i+1)*10000,:], ei_gradlogp, 5.6015)
+    man_ksd = KSD(man_samples_np[i*10000:(i+1)*10000,:], man_gradlogp, 5.6015)
+    x_ksd = KSD(x_np[i*10000:(i+1)*10000,:], x_gradlogp, 5.6015)
+    flow_ksd = KSD(flow_samples_np[i*10000:(i+1)*10000,:], flow_gradlogp, 5.6015)
+    print("EI", ei_ksd)
+    print("man", man_ksd)
+    print("x", x_ksd)
+    print("flow", flow_ksd)
+    ei_ksds.append(ei_ksd)
+    man_ksds.append(man_ksd)
+    x_ksds.append(x_ksd)
+    flow_ksds.append(flow_ksd)
+ei_ksds=np.array(ei_ksds)
+man_ksds=np.array(man_ksds)
+x_ksds = np.array(x_ksds)
+flow_ksds = np.array(flow_ksds)
+# %%
+from matplotlib import rc
+%matplotlib qt
+plt.figure(figsize=(5,5))
+# rc('text', usetex=True)
+# rc('font',**{'family':'serif','serif':['Computer Modern Roman']})
+plt.rcParams.update({'font.size': 20})
+# data = np.zeros((4, 10))
+data = np.load('tempdata.npy')
+# data[0,:]=man_ksds
+# data[1,:]=ei_ksds
+# data[2,:]=x_ksds
+# data[3, :] = flow_ksds
+# np.save('tempdata', data)
+
+lqs = np.percentile(data, 25, axis=1)
+print(lqs)
+uqs = np.percentile(data, 75, axis=1)
+print(uqs)
+medians = np.median(data, axis=1)
+print(medians)
+errors = np.zeros((2, 4))
+errors[0, :] = medians - lqs
+errors[1, :] = uqs - medians
+plt.errorbar([0,1], medians[[0, 1]], errors[:, [0, 1]], fmt='kx', capsize=10, linewidth=3,
+    elinewidth=2, markersize=10, label='Median')
+# plt.figure(figsize=(3,5))
+# plt.plot(data,'x',color='black')
+# plt.xticks([0, 1,2,3], ['Manual', 'EI', 'Training data', 'flow'])
+plt.xticks([0,1], ['Manual', 'EI'])
+plt.ylabel('KSD')
+plt.tight_layout()
+plt.show()
+
+# %%
+print(np.median(data, axis=1))
+
+
+# %%
