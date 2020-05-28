@@ -80,7 +80,7 @@ class OpenMMEnergyInterfaceParallel(torch.autograd.Function):
         # Process state
         # openmm context and temperature are passed a global variables
         input = input.reshape(-1, 3)
-        n_dim = input.shape[1]
+        n_dim = input.shape[0]
 
         kBT = R * temperature
         # Handle nans and infinities
