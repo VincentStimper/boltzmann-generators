@@ -96,7 +96,7 @@ class OpenMMEnergyInterfaceParallel(torch.autograd.Function):
                 unit.kilojoule / unit.mole) / kBT
 
             # get forces
-            force = state.getForces(asNumpy=True).value_in_unit(
+            force = -state.getForces(asNumpy=True).value_in_unit(
                 unit.kilojoule / unit.mole / unit.nanometer) / kBT
         force = force.reshape(n_dim * 3)
         return energy, force
