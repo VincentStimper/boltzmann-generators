@@ -108,7 +108,7 @@ class OpenMMEnergyInterfaceParallel(torch.autograd.Function):
         energies_out, forces_out = zip(*pool.map(
             OpenMMEnergyInterfaceParallel.batch_proc, input_np))
         energies_np = np.array(energies_out)[:, None]
-        forces_np = np.concatenate(forces_out)[:, None]
+        forces_np = np.concatenate(forces_out)
         energies = torch.from_numpy(energies_np)
         forces = torch.from_numpy(forces_np)
         # Save the forces for the backward step, uploading to the gpu if needed
