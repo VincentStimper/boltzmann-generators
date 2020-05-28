@@ -65,7 +65,7 @@ if args.resume:
         optimizer.load_state_dict(torch.load(os.path.join(checkpoint_root,
                                                           'checkpoints/optimizer.pt')))
         loss_hist = np.loadtxt(os.path.join(checkpoint_root, 'log/loss.csv'))
-        start_iter = latest_cp[-8:-3]
+        start_iter = int(latest_cp[-8:-3])
 if start_iter > 0:
     for _ in range(start_iter // config['train']['decay_iter']):
         lr_scheduler.step()
