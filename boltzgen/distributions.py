@@ -5,8 +5,6 @@ import multiprocessing as mp
 
 from . import openmm_interface as omi
 
-from openmmtools.constants import kB
-
 
 class Boltzmann(nf.distributions.PriorDistribution):
     """
@@ -71,6 +69,44 @@ class TransformedBoltzmann(nf.distributions.PriorDistribution):
     def log_prob(self, z):
         z, log_det = self.transform(z)
         return -self.norm_energy(z) + log_det
+
+
+class BoltzmannParallel(nf.distributions.PriorDistribution):
+    """
+    Boltzmann distribution using OpenMM to get energy and forces and processes the
+    batch of states in parallel
+    """
+    def __init__(self, system, temperature, energy_cut, energy_max, n_threads=None):
+        """
+        Constructor
+        :param system: Molecular system
+        :param temperature: Temperature of System
+        :param energy_cut: Energy at which logarithm is applied
+        :param energy_max: Maximum energy
+        :param n_threads: Number of threads to use to process batches, set
+        to the number of cpus if None
+        """
+        # Save input parameters
+        self.system = system
+        self.temperature = temperature
+        self.energy_cut = torch.tensor(energy_cut)
+        self.energy_max = torch.tensor(energy_max)
+        self.n_threads = mp.cpu_count() if n_threads is None else n_threads
+
+        # Create pool for parallel processing
+        self.pool = mp.Pool(self.n_threads, omi.OpenMMEnergyInterfaceParallel.var_init,
+                            (system, temperature))
+
+        # Set up functions
+        self.openmm_energy = omi.OpenMMEnergyInterfaceParallel.apply
+        self.regularize_energy = omi.regularize_energy
+
+        self.norm_energy = lambda pos: self.regularize_energy(
+            self.openmm_energy(pos, self.pool)[:, 0],
+            self.energy_cut, self.energy_max)
+
+    def log_prob(self, z):
+        return -self.norm_energy(z)
 
 
 class TransformedBoltzmannParallel(nf.distributions.PriorDistribution):
