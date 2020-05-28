@@ -16,7 +16,7 @@ class OpenMMEnergyInterface(torch.autograd.Function):
         n_batch = input.shape[0]
         input = input.view(n_batch, -1, 3)
         n_dim = input.shape[1]
-        energies = torch.zeros((n_batch, 1)).double()
+        energies = torch.zeros((n_batch, 1), dtype=input.dtype)
         forces = torch.zeros_like(input)
 
         kBT = R * temperature
