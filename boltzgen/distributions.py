@@ -113,8 +113,8 @@ class TransformedBoltzmannParallel(nf.distributions.PriorDistribution):
         self.transform = transform
 
     def log_prob(self, z):
-        z_, _ = self.transform(z)
-        return -self.norm_energy(z_, self.n_threads)
+        z_, log_det = self.transform(z)
+        return -self.norm_energy(z_, self.n_threads) + log_det
 
 
 class DoubleWell(nf.distributions.PriorDistribution):
