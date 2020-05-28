@@ -13,6 +13,8 @@ system:                             # Properties of molecular system
   energy_max: 1.e+20                # Double, maximum level at which energies will be clamped
   platform: CUDA                    # String, specifies the platform used for force and energy calculations
   precision: double                 # String, specifies the precision used for force and energy calculations
+  parallel_energy: True             # Bool, flag whether to process the batch in parallel to get energy
+  n_threads: null                   # Int, number of threads to be used, number of cores if null
 
 
 model:                              # Properties of the model

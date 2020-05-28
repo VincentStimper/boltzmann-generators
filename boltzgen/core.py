@@ -9,8 +9,9 @@ from simtk.openmm import app
 from openmmtools import testsystems
 import mdtraj
 
-from boltzgen.flows import CoordinateTransform
-from boltzgen.distributions import Boltzmann, TransformedBoltzmann
+from .flows import CoordinateTransform
+from .distributions import Boltzmann, TransformedBoltzmann, \
+    BoltzmannParallel, TransformedBoltzmannParallel
 
 class BoltzmannGenerator(nf.NormalizingFlow):
     """
@@ -52,6 +53,12 @@ class BoltzmannGenerator(nf.NormalizingFlow):
                                                                 1. / unit.picosecond,
                                                                 1. * unit.femtosecond),
                                           mm.Platform.getPlatformByName('CPU'))
+            elif config['system']['platform'] == 'Reference':
+                self.sim = app.Simulation(self.system.topology, self.system.system,
+                                          mm.LangevinIntegrator(temperature * unit.kelvin,
+                                                                1. / unit.picosecond,
+                                                                1. * unit.femtosecond),
+                                          mm.Platform.getPlatformByName('Reference'))
             else:
                 self.sim = app.Simulation(self.system.topology, self.system.system,
                                           mm.LangevinIntegrator(temperature * unit.kelvin,
@@ -90,12 +97,23 @@ class BoltzmannGenerator(nf.NormalizingFlow):
         # Set prior and q0
         energy_cut = config['system']['energy_cut']
         energy_max = config['system']['energy_max']
-        p = Boltzmann(self.sim.context, temperature, energy_cut=energy_cut,
-                      energy_max=energy_max)
         transform = CoordinateTransform(training_data, ndim, z_matrix, backbone_indices)
-        if config['model']['snf']['mcmc']:
-            p_ = TransformedBoltzmann(self.sim.context, temperature, energy_cut=energy_cut,
-                                      energy_max=energy_max, transform=transform)
+
+        if 'parallel_energy' in config['system'] and config['system']['parallel_energy']:
+            p = BoltzmannParallel(self.system, temperature, energy_cut=energy_cut,
+                          energy_max=energy_max, n_threads=config['system']['n_threads'])
+            if config['model']['snf']['mcmc']:
+                p_ = TransformedBoltzmannParallel(self.system, temperature,
+                                                  energy_cut=energy_cut,
+                                                  energy_max=energy_max,
+                                                  transform=transform,
+                                                  n_threads=config['system']['n_threads'])
+        else:
+            p = Boltzmann(self.sim.context, temperature, energy_cut=energy_cut,
+                          energy_max=energy_max)
+            if config['model']['snf']['mcmc']:
+                p_ = TransformedBoltzmann(self.sim.context, temperature, energy_cut=energy_cut,
+                                          energy_max=energy_max, transform=transform)
 
         latent_size = config['model']['latent_size']
         q0 = nf.distributions.DiagGaussian(latent_size, trainable=False)
