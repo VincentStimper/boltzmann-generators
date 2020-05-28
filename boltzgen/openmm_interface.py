@@ -111,6 +111,8 @@ class OpenMMEnergyInterfaceParallel(torch.autograd.Function):
         forces_np = np.array(forces_out)
         energies = torch.from_numpy(energies_np)
         forces = torch.from_numpy(forces_np)
+        energies = energies.type(input.dtype)
+        forces = forces.type(input.dtype)
         # Save the forces for the backward step, uploading to the gpu if needed
         ctx.save_for_backward(forces.to(device=device))
         return energies.to(device=device)
