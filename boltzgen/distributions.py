@@ -106,15 +106,15 @@ class TransformedBoltzmannParallel(nf.distributions.PriorDistribution):
         self.openmm_energy = omi.OpenMMEnergyInterfaceParallel.apply
         self.regularize_energy = omi.regularize_energy
 
-        self.norm_energy = lambda pos, splits: self.regularize_energy(
-            self.openmm_energy(pos, self.pool, splits)[:, 0],
+        self.norm_energy = lambda pos: self.regularize_energy(
+            self.openmm_energy(pos, self.pool)[:, 0],
             self.energy_cut, self.energy_max)
 
         self.transform = transform
 
     def log_prob(self, z):
         z_, log_det = self.transform(z)
-        return -self.norm_energy(z_, self.n_threads) + log_det
+        return -self.norm_energy(z_) + log_det
 
 
 class DoubleWell(nf.distributions.PriorDistribution):
