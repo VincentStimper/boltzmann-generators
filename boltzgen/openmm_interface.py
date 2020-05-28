@@ -72,7 +72,7 @@ class OpenMMEnergyInterfaceParallel(torch.autograd.Function):
                              mm.LangevinIntegrator(temp * unit.kelvin,
                                                    1.0 / unit.picosecond,
                                                    1.0 * unit.femtosecond),
-                             platform=mm.Platform.getPlatformByName('CPU'))
+                             platform=mm.Platform.getPlatformByName('Reference'))
         openmm_context = sim.context
 
     @staticmethod
