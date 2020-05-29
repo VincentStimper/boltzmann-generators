@@ -92,7 +92,7 @@ for it in range(start_iter, max_iter):
         torch.save(optimizer.state_dict(),
                    os.path.join(checkpoint_root, 'checkpoints/optimizer.pt'))
         np.savetxt(os.path.join(checkpoint_root, 'log/loss.csv'), loss_hist)
-        if (time() - start_time) / 3600 > args.tlimit:
+        if args.tlimit is not None and (time() - start_time) / 3600 > args.tlimit:
             break
     
     if (it + 1) % config['train']['decay_iter'] == 0:
