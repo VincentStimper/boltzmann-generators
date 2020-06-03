@@ -65,9 +65,12 @@ if args.resume:
                                                'model')
     if latest_cp is not None:
         model.load(latest_cp)
-        optimizer.load_state_dict(torch.load(os.path.join(checkpoint_root,
-                                                          'checkpoints/optimizer.pt')))
-        loss_hist = np.loadtxt(os.path.join(checkpoint_root, 'log/loss.csv'))
+        optimizer_path = os.path.join(checkpoint_root, 'checkpoints/optimizer.pt')
+        if os.path.exists(optimizer_path):
+            optimizer.load_state_dict(torch.load(optimizer_path))
+        loss_path = os.path.join(checkpoint_root, 'log/loss.csv')
+        if os.path.exists(loss_path):
+            loss_hist = np.loadtxt(loss_path)
         start_iter = int(latest_cp[-8:-3])
 if start_iter > 0:
     for _ in range(start_iter // config['train']['decay_iter']):
