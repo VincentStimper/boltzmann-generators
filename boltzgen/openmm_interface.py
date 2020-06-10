@@ -16,7 +16,7 @@ class OpenMMEnergyInterface(torch.autograd.Function):
         n_batch = input.shape[0]
         input = input.view(n_batch, -1, 3)
         n_dim = input.shape[1]
-        energies = torch.zeros((n_batch, 1))
+        energies = torch.zeros((n_batch, 1), dtype=input.dtype)
         forces = torch.zeros_like(input)
 
         kBT = R * temperature
@@ -72,51 +72,47 @@ class OpenMMEnergyInterfaceParallel(torch.autograd.Function):
                              mm.LangevinIntegrator(temp * unit.kelvin,
                                                    1.0 / unit.picosecond,
                                                    1.0 * unit.femtosecond),
-                             platform=mm.Platform.getPlatformByName('CPU'))
+                             platform=mm.Platform.getPlatformByName('Reference'))
         openmm_context = sim.context
 
     @staticmethod
     def batch_proc(input):
-        # Process batch  of states
+        # Process state
         # openmm context and temperature are passed a global variables
-        n_batch = input.shape[0]
-        input = input.reshape(n_batch, -1, 3)
-        n_dim = input.shape[1]
-        energies = np.zeros((n_batch, 1))
-        forces = np.zeros((n_batch, n_dim, 3))
+        input = input.reshape(-1, 3)
+        n_dim = input.shape[0]
 
         kBT = R * temperature
-        for i in range(n_batch):
-            # reshape the coordinates and send to OpenMM
-            x = input[i, :].reshape(-1, 3)
-            # Handle nans and infinities
-            if np.any(np.isnan(x)) or np.any(np.isinf(x)):
-                energies[i, 0] = np.nan
-            else:
-                openmm_context.setPositions(x)
-                state = openmm_context.getState(getForces=True, getEnergy=True)
+        # Handle nans and infinities
+        if np.any(np.isnan(input)) or np.any(np.isinf(input)):
+            energy = np.nan
+            force = np.zeros_like(input)
+        else:
+            openmm_context.setPositions(input)
+            state = openmm_context.getState(getForces=True, getEnergy=True)
 
-                # get energy
-                energies[i, 0] = state.getPotentialEnergy().value_in_unit(
-                    unit.kilojoule / unit.mole) / kBT
+            # get energy
+            energy = state.getPotentialEnergy().value_in_unit(
+                unit.kilojoule / unit.mole) / kBT
 
-                # get forces
-                forces[i, :] = state.getForces(asNumpy=True).value_in_unit(
-                    unit.kilojoule / unit.mole / unit.nanometer) / kBT
-        forces = forces.reshape(n_batch, n_dim * 3)
-        return energies, forces
+            # get forces
+            force = -state.getForces(asNumpy=True).value_in_unit(
+                unit.kilojoule / unit.mole / unit.nanometer) / kBT
+        force = force.reshape(n_dim * 3)
+        return energy, force
 
     @staticmethod
-    def forward(ctx, input, pool, splits):
+    def forward(ctx, input, pool):
         device = input.device
         input_np = input.cpu().detach().numpy()
-        input_splitted = np.array_split(input_np, splits)
         energies_out, forces_out = zip(*pool.map(
-            OpenMMEnergyInterfaceParallel.batch_proc, input_splitted))
-        energies_np = np.concatenate(energies_out)
-        forces_np = np.concatenate(forces_out)
+            OpenMMEnergyInterfaceParallel.batch_proc, input_np))
+        energies_np = np.array(energies_out)[:, None]
+        forces_np = np.array(forces_out)
         energies = torch.from_numpy(energies_np)
         forces = torch.from_numpy(forces_np)
+        energies = energies.type(input.dtype)
+        forces = forces.type(input.dtype)
         # Save the forces for the backward step, uploading to the gpu if needed
         ctx.save_for_backward(forces.to(device=device))
         return energies.to(device=device)

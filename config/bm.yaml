@@ -13,6 +13,8 @@ system:                             # Properties of molecular system
   energy_max: 1.e+20                # Double, maximum level at which energies will be clamped
   platform: CUDA                    # String, specifies the platform used for force and energy calculations
   precision: double                 # String, specifies the precision used for force and energy calculations
+  parallel_energy: True             # Bool, flag whether to process the batch in parallel to get energy
+  n_threads: null                   # Int, number of threads to be used, number of cores if null
 
 
 model:                              # Properties of the model
@@ -43,6 +45,18 @@ model:                              # Properties of the model
       - 0.97
       - 0.98
       - 0.99
+      - 1.0
+    lambda_min:                     # Double array, interpolation parameters between Boltzmann and
+      - 0.1                         # initial distribution, if lambda_min and max are specified,
+      - 0.3                         # lambda is linearly interpolated within the given interval
+      - 0.5                         # in each MCMC layer
+      - 0.7
+      - 0.9
+    lambda_max:
+      - 0.2
+      - 0.4
+      - 0.6
+      - 0.8
       - 1.0
 
 
