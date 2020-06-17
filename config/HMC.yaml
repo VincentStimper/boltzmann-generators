@@ -1,0 +1,77 @@
+# Config file for specifying HMC based experiments and models
+
+system:
+
+  name: AlanineDipeptideVacuum
+  temperature: 1000
+  energy_cut: 1.e+2
+  energy_max: 1.e+20
+  platform: CPU
+  precision: double
+  parallel_energy: False
+  n_threads: null
+  training_data_path: 'saved_data/aldp_vacuum_training_data.h5' # will create if it doesn't exist
+
+initial_dist_model:
+  latent_size: 60
+  actnorm: True
+  rnvp:
+    blocks: 5
+    hidden_layers: 3
+    hidden_units: 128
+    output_fn: null
+    output_scale: 3
+    init_zeros: False
+  
+  # model path, optional. If given, will load the initial part of the model from
+  # this location
+  load_model_path: "saved_data/rnvp_model_blocks5_hdnlyrs3_hdnunts128_opfnnull_initzerosfalse.pt"
+  final_flow_idx_for_loaded_model: 15 #For loading the coord transform params
+  device: cpu
+
+hmc:
+  chain_length: 30
+  leapfrog_steps: 10
+  starting_step_size: 0.01 # initial step size used in all layers and dims
+  starting_log_mass: 0.0 # initial log mass used in all layers and dims
+
+full_model_path: null # if given, loads this model
+
+ei_training:
+  do_training: False
+  iters: 10000
+  samples_per_iter: 256
+  save_path: 'saved_data/1306hmc/'
+  lr: 1.e-2
+  save_interval: 50
+
+hmc_grid_search:
+  do_grid_search: True
+  log_step_size_min: -12
+  log_step_size_max: 0
+  log_mass_min: -8
+  log_mass_max: 3
+  fidelity: 4 # side length of grid. total number of points=fidelity^2
+  save_path: 'saved_data/1606gridsearch/'
+  num_samples: 10000
+  include_cl_arg_in_save_name: False
+
+hmc_grid_search_ksd_calc:
+  do_ksd_calc: False
+  sample_dict_path: 'saved_data/1306gridsearch/samples.npy'
+  ksd_save_path: 'saved_data/1406gridKSDs.npy'
+
+hmc_grid_search_choose_best_hpams:
+  do_choice: False
+  ksd_dict_path: 'saved_data/1406gridKSDs.npy'
+
+general_calc_KSD: # Just calculate the KSD for given samples
+  do_general_calc: False
+  samples_path: 'saved_data/1506eisamples.npy'
+  save_path: 'saved_data/1506eiKSDs.npy'
+  h_square_val: null # If given, use this for KSD calculations
+  samples_to_estimate_median: 10000 # If no h_square_val given, then use this number of samples to estimate h_square
+  use_block: True # whether to use the block KSD function (used for large samples sizes)
+  num_blocks: 10 # if using block, how many blocks to use
+  sub_samples: 10 # if given, split the given samples up and generate a KSD value for each block of subsamples
+

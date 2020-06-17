@@ -17,10 +17,11 @@ def KSD(z, Sqx, in_h_square=None):
     K, dimZ = z.shape
     sq_dist = pdist(z)
     pdist_square = squareform(sq_dist)**2
-    # use median
-    median = np.median(pdist_square)
-    h_square = 0.5 * median / np.log(K+1.0)
-    if in_h_square is not None:
+    if in_h_square is None:
+        # use median
+        median = np.median(pdist_square)
+        h_square = 0.5 * median / np.log(K+1.0)
+    else:
         h_square = in_h_square
     Kxy = np.exp(- pdist_square / h_square / 2.0)
 
@@ -41,8 +42,8 @@ def blockKSD(z, Sqx, num_blocks, h_square):
     K, dimZ = z.shape
     block_step = math.floor(K/num_blocks)
     culm_sum = 0
-    for i in range(0, K, block_step):
-        for j in range(0, K, block_step):
+    for i in np.floor(np.linspace(0, K, num=num_blocks+1)[0:-1]).astype(int):
+        for j in np.floor(np.linspace(0, K, num=num_blocks+1)[0:-1]).astype(int):
             zrow = z[i:i+block_step, :]
             zcol = z[j:j+block_step, :]
             Sqxrow = Sqx[i:i+block_step, :]
@@ -65,8 +66,8 @@ def blockKSD(z, Sqx, num_blocks, h_square):
             culm_sum += np.sum(M)
     return culm_sum / (K*(K-1))
             
-def get_median_estimate(z):
-    z_block = z[0:1000, :]
+def get_median_estimate(z, num_samples=1000):
+    z_block = z[0:num_samples, :]
     sq_dist = pdist(z_block)
     pdist_square = squareform(sq_dist)**2
     return np.median(pdist_square)
