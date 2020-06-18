@@ -395,7 +395,7 @@ class InternalCoordinateTransform(Transform):
 
         and returns the sum over all angles per batch.
         """
-        zero = torch.zeros(1, 1)
+        zero = torch.zeros(1, 1, dtype=angles.dtype)
         positive_loss = torch.sum(torch.where(angles > math.pi, angles - math.pi, zero) ** 2, dim=-1)
         negative_loss = torch.sum(torch.where(angles < -math.pi, angles + math.pi, zero) ** 2, dim=-1)
         return positive_loss + negative_loss
