@@ -264,7 +264,7 @@ class InternalCoordinateTransform(Transform):
 
     def _setup_std_dih(self, x):
         std_dih = torch.std(x[:, self.dih_indices], dim=0)
-        std_dih = torch.ones_like(std_dih)
+        #std_dih = torch.ones_like(std_dih)
         self.register_buffer("std_dih", std_dih)
 
     def _validate_training_data(self, training_data):
