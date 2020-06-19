@@ -28,25 +28,28 @@ class BoltzmannGenerator(nf.NormalizingFlow):
         if config['system']['name'] == 'AlanineDipeptideVacuum':
             ndim = 66
             z_matrix = [
-                (1, [4, 5, 6]),
-                (0, [1, 4, 5]),
-                (2, [1, 0, 4]),
-                (3, [1, 0, 2]),
-                (7, [6, 4, 5]),
-                (9, [8, 6, 7]),
-                (10, [8, 6, 9]),
-                (11, [10, 8, 9]),
+                (0, [1, 4, 6]),
+                (1, [4, 6, 8]),
+                (2, [1, 4, 0]),
+                (3, [1, 4, 0]),
+                (4, [6, 8, 14]),
+                (5, [4, 6, 8]),
+                (7, [6, 8, 4]),
+                (11, [10, 8, 6]),
                 (12, [10, 8, 11]),
-                (13, [10, 11, 12]),
+                (13, [10, 8, 11]),
+                (15, [14, 8, 16]),
+                (16, [14, 8, 6]),
                 (17, [16, 14, 15]),
-                (19, [18, 16, 17]),
-                (20, [18, 19, 16]),
-                (21, [18, 19, 20])
+                (18, [16, 14, 8]),
+                (19, [18, 16, 14]),
+                (20, [18, 16, 19]),
+                (21, [18, 16, 19])
             ]
-            backbone_indices = [4, 5, 6, 8, 14, 15, 16, 18]
+            cart_indices = [6, 8, 9, 10, 14]
             temperature = config['system']['temperature']
 
-            self.system = testsystems.AlanineDipeptideVacuum()
+            self.system = testsystems.AlanineDipeptideVacuum(constraints=None)
             if config['system']['platform'] == 'CPU':
                 self.sim = app.Simulation(self.system.topology, self.system.system,
                                           mm.LangevinIntegrator(temperature * unit.kelvin,
@@ -97,7 +100,7 @@ class BoltzmannGenerator(nf.NormalizingFlow):
         # Set prior and q0
         energy_cut = config['system']['energy_cut']
         energy_max = config['system']['energy_max']
-        transform = CoordinateTransform(training_data, ndim, z_matrix, backbone_indices)
+        transform = CoordinateTransform(training_data, ndim, z_matrix, cart_indices)
 
         if 'parallel_energy' in config['system'] and config['system']['parallel_energy']:
             p = BoltzmannParallel(self.system, temperature, energy_cut=energy_cut,
