@@ -49,7 +49,10 @@ class BoltzmannGenerator(nf.NormalizingFlow):
             cart_indices = [6, 8, 9, 10, 14]
             temperature = config['system']['temperature']
 
-            self.system = testsystems.AlanineDipeptideVacuum(constraints=None)
+            if config['system']['constraints']:
+                self.system = testsystems.AlanineDipeptideVacuum()
+            else:
+                self.system = testsystems.AlanineDipeptideVacuum(constraints=None)
             if config['system']['platform'] == 'CPU':
                 self.sim = app.Simulation(self.system.topology, self.system.system,
                                           mm.LangevinIntegrator(temperature * unit.kelvin,
