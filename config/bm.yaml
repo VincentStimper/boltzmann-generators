@@ -8,6 +8,7 @@ data_path: null                     # String, path to the data used in training 
 system:                             # Properties of molecular system
 
   name: AlanineDipeptideVacuum      # String, specifying the system from which states shall be generated
+  constraints: False                # Flag, true if constraints shall be used
   temperature: 1000                 # Double, temperature of the system
   energy_cut: 1.e+2                 # Double, energy level at which regularization shall be applied
   energy_max: 1.e+20                # Double, maximum level at which energies will be clamped
@@ -63,6 +64,7 @@ model:                              # Properties of the model
 train:                              # Properties of the training procedure
   max_iter: 15000                   # Int, maximum number of iteration
   batch_size: 256                   # Int, batch size used during training
+  angle_loss: False                 # Flag, true if angle loss shall be included
   learning_rate: 1.e-4              # Double, learning rate used during training
   rate_decay: 0.25                  # Double, learning rate decay factor
   decay_iter: 5000                  # Int, number of iteration after which the learning rate should be

@@ -83,7 +83,10 @@ for it in range(start_iter, max_iter):
     ind = torch.randint(n_data, (batch_size, ))
     x = training_data[ind, :].double().to(device)
     fkld = model.forward_kld(x)
-    loss = fkld
+    if 'angle_loss' in config['train'] and config['train']['angle_loss']:
+        loss = fkld + torch.mean(model.flows[-1].mixed_transform.ic_transform.angle_loss)
+    else:
+        loss = fkld
     if not torch.isnan(loss) and loss < 0:
         loss.backward()
         optimizer.step()
