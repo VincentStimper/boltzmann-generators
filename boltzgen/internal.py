@@ -175,6 +175,7 @@ class InternalCoordinateTransform(Transform):
 
         # Setup the log abs det jacobian
         jac = x.new_zeros(x.shape[0])
+        self.angle_loss = torch.zeros_like(jac)
 
         # Loop over all of the blocks, where all of the atoms in each block
         # can be built in parallel because they only depend on atoms that
@@ -208,6 +209,11 @@ class InternalCoordinateTransform(Transform):
                 * self.std_dih[self.atom_to_stats[atoms_to_build]]
                 + self.mean_dih[self.atom_to_stats[atoms_to_build]]
             )
+
+            # Compute angle loss
+            self.angle_loss = self.angle_loss + self._periodic_angle_loss(angles)
+            self.angle_loss = self.angle_loss + self._periodic_angle_loss(dihs)
+
             # Fix the dihedrals to lie in [-pi, pi].
             dihs = torch.where(dihs < math.pi, dihs + 2 * math.pi, dihs)
             dihs = torch.where(dihs > math.pi, dihs - 2 * math.pi, dihs)
@@ -258,7 +264,7 @@ class InternalCoordinateTransform(Transform):
 
     def _setup_std_dih(self, x):
         std_dih = torch.std(x[:, self.dih_indices], dim=0)
-        std_dih = torch.ones_like(std_dih)
+        #std_dih = torch.ones_like(std_dih)
         self.register_buffer("std_dih", std_dih)
 
     def _validate_training_data(self, training_data):
@@ -376,6 +382,23 @@ class InternalCoordinateTransform(Transform):
             block = torch.as_tensor(block, dtype=torch.long)
             blocks.append(block)
         self.rev_blocks = blocks
+
+    def _periodic_angle_loss(self, angles):
+        """
+        Penalizes angles outside the range [-pi, pi]
+
+        Prevents violating invertibility in internal coordinate transforms.
+        Computes
+
+            L = (a-pi) ** 2 for a > pi
+            L = (a+pi) ** 2 for a < -pi
+
+        and returns the sum over all angles per batch.
+        """
+        zero = torch.zeros(1, 1, dtype=angles.dtype)
+        positive_loss = torch.sum(torch.where(angles > math.pi, angles - math.pi, zero) ** 2, dim=-1)
+        negative_loss = torch.sum(torch.where(angles < -math.pi, angles + math.pi, zero) ** 2, dim=-1)
+        return positive_loss + negative_loss
 
 
 def topological_sort(graph_unsorted):
