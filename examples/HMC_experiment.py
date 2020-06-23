@@ -27,11 +27,19 @@ import os.path
 import os
 from sys import stdout
 
+import argparse
 
-os.environ["OPENMM_CPU_THREADS"] = "1"
+parser = argparse.ArgumentParser(description="Run experiments/generate samples from HMC chains")
+
+parser.add_argument('--config', type=str, help='Path to config file specifying the experiment details',
+    default='../config/HMC.yaml')
+parser.add_argument('--processID', type=int, help='When generating batches of samples in parallel, this ID can be appended to file names to differentiate between processes',
+    default=0)
+
+args = parser.parse_args()
 
 # this should be able to be set from the command line
-config = bg.utils.get_config('../config/HMC.yaml')
+config = bg.utils.get_config(args.config)
 
 class FlowHMC(nn.Module):
     """
@@ -44,25 +52,28 @@ class FlowHMC(nn.Module):
         if config['system']['name'] == 'AlanineDipeptideVacuum':
             ndim = 66
             z_matrix = [
-                (1, [4, 5, 6]),
-                (0, [1, 4, 5]),
-                (2, [1, 0, 4]),
-                (3, [1, 0, 2]),
-                (7, [6, 4, 5]),
-                (9, [8, 6, 7]),
-                (10, [8, 6, 9]),
-                (11, [10, 8, 9]),
+                (0, [1, 4, 6]),
+                (1, [4, 6, 8]),
+                (2, [1, 4, 0]),
+                (3, [1, 4, 0]),
+                (4, [6, 8, 14]),
+                (5, [4, 6, 8]),
+                (7, [6, 8, 4]),
+                (11, [10, 8, 6]),
                 (12, [10, 8, 11]),
-                (13, [10, 11, 12]),
+                (13, [10, 8, 11]),
+                (15, [14, 8, 16]),
+                (16, [14, 8, 6]),
                 (17, [16, 14, 15]),
-                (19, [18, 16, 17]),
-                (20, [18, 19, 16]),
-                (21, [18, 19, 20])
+                (18, [16, 14, 8]),
+                (19, [18, 16, 14]),
+                (20, [18, 16, 19]),
+                (21, [18, 16, 19])
             ]
-            backbone_indices = [4, 5, 6, 8, 14, 15, 16, 18]
+            cart_indices = [6, 8, 9, 10, 14]
             temperature = config['system']['temperature']
 
-            system = testsystems.AlanineDipeptideVacuum()
+            system = testsystems.AlanineDipeptideVacuum(constraints=None)
             if config['system']['platform'] == 'CPU':
                 sim = app.Simulation(system.topology, system.system,
                     mm.LangevinIntegrator(temperature * unit.kelvin,
@@ -115,7 +126,7 @@ class FlowHMC(nn.Module):
             training_data_npy.astype("float64"))
 
         coord_transform = bg.flows.CoordinateTransform(self.training_data,
-            n_dim, z_matrix, backbone_indices)
+            n_dim, z_matrix, cart_indices)
         if config['system']['parallel_energy']:
             self.target_dist = bg.distributions.TransformedBoltzmannParallel(
                 system, temperature,
@@ -315,7 +326,7 @@ if config['hmc_grid_search']['do_grid_search']:
                 'grid_hmc_samples_log_step_size_{:.3f}'.format(log_step_size) + \
                 '_log_mass_{:.3f}'.format(log_mass)
             if config['hmc_grid_search']['include_cl_arg_in_save_name']:
-                suffix = sys.argv[1]
+                suffix = args.processID
                 save_name += '_id_' + suffix
             np.save(save_name, samples.detach().numpy())
 
@@ -464,3 +475,18 @@ if config['general_calc_KSD']['do_general_calc']:
         np.save(config['general_calc_KSD']['save_path'], np.array([ksd]))
 
         
+# Just generate some samples and save them
+if config['generate_samples']['do_generation']:
+    for batch_num in range(config['generate_samples']['num_repeats']):
+        samples = flowhmc.sample(config['generate_samples']['num_samples'])
+        save_name = config['generate_samples']['save_path'] + \
+            config['generate_samples']['save_name_base'] + \
+            '_batch_num_' + str(batch_num)
+        if config['generate_samples']['include_cl_arg_in_save_name']:
+            save_name += '_processID_' + str(args.processID)
+        np.save(save_name, samples.detach().numpy())
+
+
+
+
+# %%

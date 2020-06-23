@@ -10,7 +10,7 @@ system:
   precision: double
   parallel_energy: False
   n_threads: null
-  training_data_path: 'saved_data/aldp_vacuum_training_data.h5' # will create if it doesn't exist
+  training_data_path: 'saved_data/aldp_vacuum_without_const.h5' # will create if it doesn't exist
 
 initial_dist_model:
   latent_size: 60
@@ -25,7 +25,7 @@ initial_dist_model:
   
   # model path, optional. If given, will load the initial part of the model from
   # this location
-  load_model_path: "saved_data/rnvp_model_blocks5_hdnlyrs3_hdnunts128_opfnnull_initzerosfalse.pt"
+  load_model_path: "models/rnvp_aldp_no_const_30k.pt"
   final_flow_idx_for_loaded_model: 15 #For loading the coord transform params
   device: cpu
 
@@ -41,12 +41,12 @@ ei_training:
   do_training: False
   iters: 10000
   samples_per_iter: 256
-  save_path: 'saved_data/1306hmc/'
+  save_path: 'saved_data/2306eitraining/'
   lr: 1.e-2
   save_interval: 50
 
 hmc_grid_search:
-  do_grid_search: True
+  do_grid_search: False
   log_step_size_min: -12
   log_step_size_max: 0
   log_mass_min: -8
@@ -58,12 +58,12 @@ hmc_grid_search:
 
 hmc_grid_search_ksd_calc:
   do_ksd_calc: False
-  sample_dict_path: 'saved_data/1306gridsearch/samples.npy'
-  ksd_save_path: 'saved_data/1406gridKSDs.npy'
+  sample_dict_path: 'saved_data/2206gridsearch.npy'
+  ksd_save_path: 'saved_data/2206gridKSDs.npy'
 
 hmc_grid_search_choose_best_hpams:
   do_choice: False
-  ksd_dict_path: 'saved_data/1406gridKSDs.npy'
+  ksd_dict_path: 'saved_data/2206gridKSDs.npy'
 
 general_calc_KSD: # Just calculate the KSD for given samples
   do_general_calc: False
@@ -74,4 +74,12 @@ general_calc_KSD: # Just calculate the KSD for given samples
   use_block: True # whether to use the block KSD function (used for large samples sizes)
   num_blocks: 10 # if using block, how many blocks to use
   sub_samples: 10 # if given, split the given samples up and generate a KSD value for each block of subsamples
+
+generate_samples: # Just generate samples and save them
+  do_generation: True
+  save_path: 'saved_data/temp/' # where to save the samples. Needs to include final forward slash
+  save_name_base: 'EI_samples' # the start of the file name
+  num_samples: 10 # how many samples to generate in each batch
+  num_repeats: 1 # how many batches to save
+  include_cl_arg_in_save_name: True # whether to include the process id cl arg in the saved file name
 
