@@ -7,6 +7,8 @@ import os
 import torch
 import mdtraj
 
+import multiprocessing as mp
+
 """
 Compute the KSD divergence using samples, adapted from the theano code
 """
@@ -65,6 +67,43 @@ def blockKSD(z, Sqx, num_blocks, h_square):
                 M = M - np.diag(np.diag(M))
             culm_sum += np.sum(M)
     return culm_sum / (K*(K-1))
+
+def blockKSDparallel(z, Sqx, num_blocks, h_square, num_processes):
+    K, dimZ = z.shape
+    block_step = math.floor(K/num_blocks)
+    data_chunks = []
+    for i in np.floor(np.linspace(0, K, num=num_blocks+1)[0:-1]).astype(int):
+        for j in np.floor(np.linspace(0, K, num=num_blocks+1)[0:-1]).astype(int):
+            zrow = z[i:i+block_step, :]
+            zcol = z[j:j+block_step, :]
+            Sqxrow = Sqx[i:i+block_step, :]
+            Sqxcol = Sqx[j:j+block_step, :]
+            data_chunks.append(
+                (zrow, zcol, Sqxrow, Sqxcol, h_square, block_step, dimZ, i, j))
+    pool = mp.Pool(processes=num_processes)
+    results = pool.map(blockKSDparallelCompute, data_chunks)
+    culm_sum = np.sum(np.array(results))
+    return culm_sum / (K*(K-1))
+
+def blockKSDparallelCompute(data_chunk):
+    zrow, zcol, Sqxrow, Sqxcol, h_square, block_step, dimZ, i, j = data_chunk
+    pdist_square = cdist(zrow, zcol)**2
+    Kxy = np.exp(- pdist_square / h_square / 2.0)
+    Sqxdy = np.tile(np.sum(Sqxrow * zrow, 1, keepdims=True),
+        (1, block_step)) - np.dot(Sqxrow, zcol.T)
+    Sqxdy = Sqxdy / h_square
+    dxSqy = (np.dot(Sqxcol, zrow.T) - \
+        np.tile(np.sum(Sqxcol * zcol, 1, keepdims=True),
+        (1, block_step))).T
+    dxSqy = -dxSqy / h_square
+    dxdy = -pdist_square / (h_square ** 2) + dimZ / h_square
+
+    M = (np.dot(Sqxrow, Sqxcol.T) + Sqxdy + dxSqy + dxdy) * Kxy
+
+    if i == j:
+        M = M - np.diag(np.diag(M))
+    return np.sum(M)
+
             
 def get_median_estimate(z, num_samples=1000):
     z_block = z[0:num_samples, :]

@@ -76,7 +76,7 @@ general_calc_KSD: # Just calculate the KSD for given samples
   sub_samples: 10 # if given, split the given samples up and generate a KSD value for each block of subsamples
 
 generate_samples: # Just generate samples and save them
-  do_generation: True
+  do_generation: False
   save_path: 'saved_data/temp/' # where to save the samples. Needs to include final forward slash
   save_name_base: 'EI_samples' # the start of the file name
   num_samples: 10 # how many samples to generate in each batch

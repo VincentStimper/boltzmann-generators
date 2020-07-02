@@ -29,17 +29,19 @@ from sys import stdout
 
 import argparse
 
-parser = argparse.ArgumentParser(description="Run experiments/generate samples from HMC chains")
-
-parser.add_argument('--config', type=str, help='Path to config file specifying the experiment details',
-    default='../config/HMC.yaml')
-parser.add_argument('--processID', type=int, help='When generating batches of samples in parallel, this ID can be appended to file names to differentiate between processes',
-    default=0)
-
-args = parser.parse_args()
+# parser = argparse.ArgumentParser(description="Run experiments/generate samples from HMC chains")
+# 
+# parser.add_argument('--config', type=str, help='Path to config file specifying the experiment details',
+#     default='../config/HMC.yaml')
+# parser.add_argument('--processID', type=int, help='When generating batches of samples in parallel, this ID can be appended to file names to differentiate between processes',
+#     default=0)
+# 
+# args = parser.parse_args()
 
 # this should be able to be set from the command line
-config = bg.utils.get_config(args.config)
+# config = bg.utils.get_config(args.config)
+# config = bg.utils.get_config('saved_data/3006_1200iterEIKSD/config.yaml')
+config = bg.utils.get_config('../config/HMC.yaml')
 
 class FlowHMC(nn.Module):
     """
@@ -112,13 +114,13 @@ class FlowHMC(nn.Module):
             sim.reporters[0].close()
 
         # Load the training data
-        training_data_traj = mdtraj.load(config['system']['training_data_path'])
-        training_data_traj.center_coordinates()
-        ind = training_data_traj.top.select("backbone")
-        training_data_traj.superpose(training_data_traj, 0, atom_indices=ind,
+        self.training_data_traj = mdtraj.load(config['system']['training_data_path'])
+        self.training_data_traj.center_coordinates()
+        ind = self.training_data_traj.top.select("backbone")
+        self.training_data_traj.superpose(self.training_data_traj, 0, atom_indices=ind,
             ref_atom_indices=ind)
         # Gather the training data into a pytorch Tensor with the right shape
-        training_data = training_data_traj.xyz
+        training_data = self.training_data_traj.xyz
         n_atoms = training_data.shape[1]
         n_dim = n_atoms * 3
         training_data_npy = training_data.reshape(-1, n_dim)
@@ -441,6 +443,7 @@ if config['general_calc_KSD']['do_general_calc']:
             print("h_square value: ", h_square)
         else:
             h_square = config['general_calc_KSD']['h_square_val']
+            print("Using given h_square value of ", h_square)
 
         KSDs = []
         for i in np.floor(np.linspace(0, num_samples, num=num_sub+1)[0:-1]).astype(int):
@@ -466,6 +469,7 @@ if config['general_calc_KSD']['do_general_calc']:
             print("h_square value: ", h_square)
         else:
             h_square = config['general_calc_KSD']['h_square_val']
+            print("Using given h_square value of ", h_square)
 
         if config['general_calc_KSD']['use_block']:
             ksd = bg.utils.blockKSD(samples, gradlogp,
@@ -485,8 +489,4 @@ if config['generate_samples']['do_generation']:
         if config['generate_samples']['include_cl_arg_in_save_name']:
             save_name += '_processID_' + str(args.processID)
         np.save(save_name, samples.detach().numpy())
-
-
-
-
-# %%
+#%%
