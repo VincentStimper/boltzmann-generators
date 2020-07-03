@@ -1,5 +1,7 @@
 import numpy as np
 from scipy.spatial.distance import pdist, squareform, cdist
+import scipy.stats
+import scipy.integrate
 import math
 import yaml
 import os
@@ -164,3 +166,24 @@ def get_latest_checkpoint(dir_path, key=''):
         return None
     checkpoints.sort()
     return checkpoints[-1]
+
+
+def estimate_kl(samples_a, samples_b, range_min, range_max):
+    """
+    Estimates the KL divergence between two sets of 1-D samples i.e KL(a||b)
+    :param samples_a: First set of samples
+    :param samples_b: Second set of samples
+    :param range_min: The lower range of integration
+    :param range_max: The upper range of integration
+    """
+    kde_a = scipy.stats.gaussian_kde(samples_a)
+    kde_b = scipy.stats.gaussian_kde(samples_b)
+
+    eps = 1e-5
+
+    def kl(x):
+        q = kde_a
+        p = kde_b
+        return q(x) * (np.log(q(x) + eps) - np.log(p(x) + eps))
+
+    return scipy.integrate.quad(kl, range_min, range_max)[0]

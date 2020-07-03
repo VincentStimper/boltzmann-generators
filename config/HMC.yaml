@@ -72,6 +72,7 @@ general_calc_KSD: # Just calculate the KSD for given samples
   h_square_val: null # If given, use this for KSD calculations
   samples_to_estimate_median: 10000 # If no h_square_val given, then use this number of samples to estimate h_square
   use_block: True # whether to use the block KSD function (used for large samples sizes)
+  num_processes: 4 # If use_block==True and this is not none then the parallel calculation is performed
   num_blocks: 10 # if using block, how many blocks to use
   sub_samples: 10 # if given, split the given samples up and generate a KSD value for each block of subsamples
 
@@ -83,3 +84,13 @@ generate_samples: # Just generate samples and save them
   num_repeats: 1 # how many batches to save
   include_cl_arg_in_save_name: True # whether to include the process id cl arg in the saved file name
 
+
+# Estimate the KL divergence between samples and the training data.
+# The KL is computed for each marginal and then grouped
+estimate_kl:
+  do_estimation: False
+  KL_direction: 'forward' # If forward then it is KL(training_data || samples)
+                          # If reverse then it is KL(samples || training_data)
+  samples_file: 'saved_data/2706eisamples.npy'
+  num_samples: 100000 # If given, only take this number of samples from the sample file
+  save_name: 'saved_data/0207KLcalcs/EI_KLs.txt'
