@@ -28,6 +28,7 @@ initial_dist_model:
   load_model_path: "models/rnvp_aldp_no_const_30k.pt"
   final_flow_idx_for_loaded_model: 15 #For loading the coord transform params
   device: cpu
+  scaling: 1.05 # if not null then will apply this scaling to rnvp
 
 hmc:
   chain_length: 30
@@ -35,7 +36,7 @@ hmc:
   starting_step_size: 0.01 # initial step size used in all layers and dims
   starting_log_mass: 0.0 # initial log mass used in all layers and dims
 
-full_model_path: null # if given, loads this model
+full_model_path:  'saved_data/0407scaledEItrain/model_ckpt_hmc_length_30_iter_750'
 
 ei_training:
   do_training: False
@@ -94,3 +95,11 @@ estimate_kl:
   samples_file: 'saved_data/2706eisamples.npy'
   num_samples: 100000 # If given, only take this number of samples from the sample file
   save_name: 'saved_data/0207KLcalcs/EI_KLs.txt'
+
+# Compute the KL divergence for samples from a grid of different parameter values
+grid_search_kl_calc:
+  do_kl_calc: False
+  sample_dict_path: 'saved_data/2206gridsearch.npy'
+  KL_direction: 'forward' # forward = KL(training_data || samples) #reverse = KL(samples||training_data)
+  kls_save_path: 'saved_data/0307gridKLcalc/gridKLs_forwardmean.npy'
+

@@ -1,5 +1,6 @@
 from . import mixed
 import normflow as nf
+import numpy as np
 
 class CoordinateTransform(nf.flows.Flow):
     """
@@ -28,3 +29,27 @@ class CoordinateTransform(nf.flows.Flow):
     def inverse(self, z):
         z_, log_det = self.mixed_transform.forward(z)
         return z_, log_det
+
+class Scaling(nf.flows.Flow):
+    """
+    Applys a scaling factor
+    """
+    def __init__(self, mean, scale):
+        """
+        Constructor
+        :param means: The mean of the previous layer
+        :param scale: scale factor to apply
+        """
+        super().__init__()
+        self.register_buffer('mean', mean)
+        self.register_buffer('scale', scale)
+
+    def forward(self, z):
+        z_ = (z-self.mean) * self.scale + self.mean
+        logdet = np.log(self.scale) * self.mean.shape[0]
+        return z_, logdet
+
+    def inverse(self, z):
+        z_ = (z-self.mean) / self.scale + self.mean
+        logdet = -np.log(self.scale) * self.mean.shape[0]
+        return z_, logdet

@@ -178,6 +178,19 @@ def main():
                 if config['initial_dist_model']['actnorm']:
                     raw_flows += [nf.flows.ActNorm(latent_size)]
 
+
+            if config['initial_dist_model']['scaling'] is not None:
+                print("adding scaling layer, using scaling:",
+                    config['initial_dist_model']['scaling'])
+                with torch.no_grad():
+                    x, _ = self.rnvp_initial_dist.forward(100000)
+                    for i in range(len(raw_flows)):
+                        x, _ = raw_flows[i].forward(x)
+                    raw_flows += [bg.flows.Scaling(torch.mean(x, 0),
+                        torch.tensor(config['initial_dist_model']['scaling']))]
+
+            self.end_init_flow_idx = len(raw_flows)
+
             # Add HMC layers
             for i in range(config['hmc']['chain_length']):
                 step_size = config['hmc']['starting_step_size'] * \
@@ -192,8 +205,6 @@ def main():
 
             self.flows = nn.ModuleList(raw_flows)
 
-            self.end_init_flow_idx = len(self.flows) - 1 - \
-                config['hmc']['chain_length']
 
         def load_model_for_initial_flow(self, config, reporting=False):
             # Loads parameters into the inital flow from the given path
@@ -502,6 +513,7 @@ def main():
             
     # Just generate some samples and save them
     if config['generate_samples']['do_generation']:
+        print("Generating samples")
         for batch_num in range(config['generate_samples']['num_repeats']):
             samples = flowhmc.sample(config['generate_samples']['num_samples'])
             save_name = config['generate_samples']['save_path'] + \
@@ -582,6 +594,67 @@ def main():
         print_stats(angle_kls)
         print("Dihedral group statistics:")
         print_stats(dihedral_kls)
+
+    # Compute KL values for a grid of samples from different parameter values
+    if config['grid_search_kl_calc']['do_kl_calc']:
+        print("Finding KLs over grid of samples")
+        print("Loading sample dict file",
+            config['grid_search_kl_calc']['sample_dict_path'])
+        samples_dict = np.load(
+            config['grid_search_kl_calc']['sample_dict_path'],
+            allow_pickle=True)
+        samples_dict = samples_dict.item()
+
+        # convert samples to internal coords
+        for key in samples_dict:
+            samples = torch.from_numpy(samples_dict[key])
+            ic_samples, _ = flowhmc.flows[-1].inverse(samples)
+            samples_dict[key] = ic_samples.detach().numpy()
+
+        # remove any nans
+        total_samples = 0
+        total_nans = 0
+        for key in samples_dict:
+            num_samples = samples_dict[key].shape[0]
+
+            samples_dict[key] = \
+                samples_dict[key][~np.isnan(samples_dict[key]).any(axis=1)]
+
+            num_nans = num_samples - samples_dict[key].shape[0]
+            total_samples += num_samples
+            total_nans += num_nans
+        print("removed ", total_nans, " nan values.", total_nans/total_samples,
+            "proportion of total samples")
+
+        ic_training_data, _ = flowhmc.flows[-1].inverse(flowhmc.training_data)
+        ic_training_data = ic_training_data.detach().numpy()
+
+        rangeminmax = 7
+
+        def kl(samples, training_data):
+            if config['grid_search_kl_calc']['KL_direction'] == 'forward':
+                return bg.utils.estimate_kl(training_data, samples, -rangeminmax,
+                    rangeminmax)
+            elif config['grid_search_kl_calc']['KL_direction'] == 'reverse':
+                return bg.utils.estimate_kl(samples, training_data, -rangeminmax,
+                    rangeminmax)
+            else:
+                print("Given an unknown KL direction in the config file:",
+                    config['grid_search_kl_calc']['KL_direction'])
+
+        kls_dict = {}
+        print("Computing KLs")
+        for key in tqdm(samples_dict):
+            kls = []
+            for i in range(60):
+                kls.append(kl(samples_dict[key][:, i], ic_training_data[:, i]))
+            kls = np.array(kls)
+            print(kls)
+            kls_dict[key] = kls
+
+        print("Saving KL dict at", 
+            config['grid_search_kl_calc']['kls_save_path'])
+        np.save(config['grid_search_kl_calc']['kls_save_path'], kls_dict)
 
 
 if __name__ == "__main__":
