@@ -1,0 +1,75 @@
+# Config file specifying the setup of a Boltzmann Generator
+# based on a Real NVP flow model
+
+
+data_path: null                     # String, path to the data used in training and to initialize transform
+
+
+system:                             # Properties of molecular system
+
+  name: AlanineDipeptideVacuum      # String, specifying the system from which states shall be generated
+  constraints: False                # Flag, true if constraints shall be used
+  temperature: 1000                 # Double, temperature of the system
+  energy_cut: 1.e+2                 # Double, energy level at which regularization shall be applied
+  energy_max: 1.e+20                # Double, maximum level at which energies will be clamped
+  platform: CUDA                    # String, specifies the platform used for force and energy calculations
+  precision: double                 # String, specifies the precision used for force and energy calculations
+  parallel_energy: True             # Bool, flag whether to process the batch in parallel to get energy
+  n_threads: null                   # Int, number of threads to be used, number of cores if null
+
+
+model:                              # Properties of the model
+
+  latent_size: 60                   # Int, number of features in the latent space
+  actnorm: True                     # Bool, flag whether to include an ActNorm layer after each
+                                    # Real NVP block
+
+  rnvp:                             # Properties of the Real NVP architecture
+    include: True                   # Bool, flag if unset of true RNVP blocks are included in the model
+    blocks: 5                       # Int, number of Real NVP blocks, consisting of two alternating
+                                    # Real NVP layers each, to use
+    hidden_layers: 3                # Int, number of hidden layers
+    hidden_units: 128               # Int, number of hidden units
+    output_fn: null                 # String, function to be applied to the output of NN for scale in
+                                    # RNVP, either None, sigmoid, relu, or tanh
+    output_scale: 3                 # Double, rescales outputs of NN for scale in RNVP if output_fn is
+                                    # specified, i.e. scale * output_fn(out / scale)
+    init_zeros: False               # Bool, flag whether to initialize last layer of NNs with zeros
+
+  snf:                              # Properties of the SNF layers
+    mcmc: True                      # Bool, flag whether to include an MCMC layer after each Real NVP
+                                    # block, i.e. whether to classical or a stochastic normalizing flow
+    proposal_std: 0.1               # Double, standard deviation of the Diagonal Gaussian proposal
+                                    # distribution
+    steps: 20                       # Int, number of MCMC steps to perform
+    lambda:                         # Double array, interpolation parameters between Boltzmann and
+      - 0.96                        # initial distribution
+      - 0.97
+      - 0.98
+      - 0.99
+      - 1.0
+    lambda_min:                     # Double array, interpolation parameters between Boltzmann and
+      - 0.1                         # initial distribution, if lambda_min and max are specified,
+      - 0.3                         # lambda is linearly interpolated within the given interval
+      - 0.5                         # in each MCMC layer
+      - 0.7
+      - 0.9
+    lambda_max:
+      - 0.2
+      - 0.4
+      - 0.6
+      - 0.8
+      - 1.0
+
+
+train:                              # Properties of the training procedure
+  max_iter: 15000                   # Int, maximum number of iteration
+  batch_size: 256                   # Int, batch size used during training
+  angle_loss: False                 # Flag, true if angle loss shall be included
+  learning_rate: 1.e-4              # Double, learning rate used during training
+  rate_decay: 0.25                  # Double, learning rate decay factor
+  decay_iter: 5000                  # Int, number of iteration after which the learning rate should be
+                                    # decreased
+  weight_decay: 1.e-5               # Double, regularization parameter
+  checkpoint_iter: 100              # Int, number of iterations after which checkpoint is saved
+  checkpoint_root: ./               # String, path to checkpoint directory
