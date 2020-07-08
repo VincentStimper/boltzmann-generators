@@ -25,6 +25,7 @@ model:                              # Properties of the model
                                     # Real NVP block
 
   rnvp:                             # Properties of the Real NVP architecture
+    include: True                   # Bool, flag if unset of true RNVP blocks are included in the model
     blocks: 5                       # Int, number of Real NVP blocks, consisting of two alternating
                                     # Real NVP layers each, to use
     hidden_layers: 3                # Int, number of hidden layers

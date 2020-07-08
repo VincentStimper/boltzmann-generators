@@ -134,15 +134,17 @@ class BoltzmannGenerator(nf.NormalizingFlow):
         b = torch.Tensor([1 if i % 2 == 0 else 0 for i in range(latent_size)])
         flows = []
         for i in range(rnvp_blocks):
-            # Two alternating Real NVP layers
-            s = nf.nets.MLP([latent_size] + hidden_layers * [hidden_units] + [latent_size],
-                            output_fn=output_fn, output_scale=output_scale, init_zeros=init_zeros)
-            t = nf.nets.MLP([latent_size] + hidden_layers * [hidden_units] + [latent_size])
-            flows += [nf.flows.MaskedAffineFlow(b, s, t)]
-            s = nf.nets.MLP([latent_size] + hidden_layers * [hidden_units] + [latent_size],
-                            output_fn=output_fn, output_scale=output_scale, init_zeros=init_zeros)
-            t = nf.nets.MLP([latent_size] + hidden_layers * [hidden_units] + [latent_size])
-            flows += [nf.flows.MaskedAffineFlow(1 - b, s, t)]
+            if not 'include' in config['model']['rnvp'].keys() or \
+                    config['model']['rnvp']['include']:
+                # Two alternating Real NVP layers
+                s = nf.nets.MLP([latent_size] + hidden_layers * [hidden_units] + [latent_size],
+                                output_fn=output_fn, output_scale=output_scale, init_zeros=init_zeros)
+                t = nf.nets.MLP([latent_size] + hidden_layers * [hidden_units] + [latent_size])
+                flows += [nf.flows.MaskedAffineFlow(b, s, t)]
+                s = nf.nets.MLP([latent_size] + hidden_layers * [hidden_units] + [latent_size],
+                                output_fn=output_fn, output_scale=output_scale, init_zeros=init_zeros)
+                t = nf.nets.MLP([latent_size] + hidden_layers * [hidden_units] + [latent_size])
+                flows += [nf.flows.MaskedAffineFlow(1 - b, s, t)]
 
             # ActNorm
             if config['model']['actnorm']:
