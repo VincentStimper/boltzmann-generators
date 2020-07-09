@@ -100,7 +100,24 @@ for it in range(start_iter, max_iter):
         if config['train']['fkld']['coeff'] > 0:
             loss = loss + config['train']['fkld']['coeff'] * fkld
     if config['train']['rkld']['coeff'] > 0 or config['train']['rkld']['log']:
-        rkld = torch.mean(logq) - torch.mean(logp)
+        if 'annealing' in config['train']['rkld'] \
+                and config['train']['rkld']['annealing']['type'] is not None:
+            anneal_len = config['train']['rkld']['annealing']['length']
+            if config['train']['rkld']['annealing']['type'] == 'lin':
+                beta = np.linspace(config['train']['rkld']['annealing']['start'], 1,
+                                   anneal_len)
+                beta = np.concatenate([beta, np.ones(max_iter - anneal_len)])
+            elif config['train']['rkld']['annealing']['type'] == 'geom':
+                beta = np.geomspace(config['train']['rkld']['annealing']['start'], 1,
+                                    anneal_len)
+                beta = np.concatenate([beta, np.ones(max_iter - anneal_len)])
+            else:
+                raise NotImplementedError('The annealing type '
+                                          + config['train']['rkld']['annealing']['type']
+                                          + ' is not yet implemented')
+        else:
+            beta = np.ones(max_iter)
+        rkld = torch.mean(logq) - beta[it] * torch.mean(logp)
         if config['train']['rkld']['log']:
             loss_log_.append(rkld.to('cpu').data.numpy())
             header_log += ',rkld'
