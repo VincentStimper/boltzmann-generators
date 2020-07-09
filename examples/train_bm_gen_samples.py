@@ -51,7 +51,7 @@ n_data = len(training_data)
 checkpoint_step = config['train']['checkpoint_iter']
 checkpoint_root = config['train']['checkpoint_root']
 
-loss_hist = np.array([])
+loss_log = None
 
 optimizer = torch.optim.Adam(model.parameters(), lr=config['train']['learning_rate'],
                              weight_decay=config['train']['weight_decay'])
@@ -72,6 +72,8 @@ if args.resume:
         if os.path.exists(loss_path):
             loss_hist = np.loadtxt(loss_path)
         start_iter = int(latest_cp[-8:-3])
+    elif config['train']['init_model'] is not None:
+        model.load(config['train']['init_model'])
 if start_iter > 0:
     for _ in range(start_iter // config['train']['decay_iter']):
         lr_scheduler.step()
@@ -80,13 +82,52 @@ start_time = time()
 
 for it in range(start_iter, max_iter):
     optimizer.zero_grad()
-    ind = torch.randint(n_data, (batch_size, ))
-    x = training_data[ind, :].double().to(device)
     fkld = model.forward_kld(x)
-    if 'angle_loss' in config['train'] and config['train']['angle_loss']:
-        loss = fkld + torch.mean(model.flows[-1].mixed_transform.ic_transform.angle_loss)
+    z, logq = model.sample(batch_size)
+    logp = model.p.log_prob(z)
+
+    # Assemble loss
+    loss = 0
+    loss_log_ = [logq.to('cpu').data.numpy(), logp.to('cpu').data.numpy()]
+    header_log = 'loss,logq,logp'
+    if config['train']['fkld']['coeff'] > 0 or config['train']['fkld']['log']:
+        ind = torch.randint(n_data, (batch_size,))
+        x = training_data[ind, :].double().to(device)
+        fkld = model.forward_kld(x)
+        if config['train']['fkld']['log']:
+            loss_log_.append(fkld.to('cpu').data.numpy())
+            header_log += ',fkld'
+        if config['train']['fkld']['coeff'] > 0:
+            loss = loss + config['train']['fkld']['coeff'] * fkld
+    if config['train']['rkld']['coeff'] > 0 or config['train']['rkld']['log']:
+        rkld = torch.mean(logq) - torch.mean(logp)
+        if config['train']['rkld']['log']:
+            loss_log_.append(rkld.to('cpu').data.numpy())
+            header_log += ',rkld'
+        if config['train']['rkld']['coeff'] > 0:
+            loss = loss + config['train']['rkld']['coeff'] * rkld
+    if config['train']['alphadiv']['coeff'] > 0 or config['train']['alphadiv']['log']:
+        alphadiv = -torch.logsumexp(config['train']['alphadiv']['alpha'] * (logp - logq), 0) \
+                   + np.log(logp.shape[0])
+        if config['train']['alphadiv']['log']:
+            header_log += ',alphadiv'
+            loss_log_.append(alphadiv.to('cpu').data.numpy())
+        if config['train']['alphadiv']['coeff'] > 0:
+            loss = loss + config['train']['alphadiv']['coeff'] * alphadiv
+    if config['train']['angle_loss']['coeff'] > 0 or config['train']['angle_loss']['log']:
+        angle_loss = torch.mean(model.flows[-1].mixed_transform.ic_transform.angle_loss)
+        if config['train']['angle_loss']['log']:
+            header_log += ',angle_loss'
+            loss_log_.append(angle_loss.to('cpu').data.numpy())
+        if config['train']['angle_loss']['coeff'] > 0:
+            loss = loss + config['train']['angle_loss']['coeff'] * angle_loss
+
+    loss_log_ = [loss.to('cpu').data.numpy()] + loss_log_
+    if loss_log is None:
+        loss_log = np.array(loss_log_)[None, :]
     else:
-        loss = fkld
+        loss_log = np.concatenate([loss_log, loss_log_], 0)
+
     if not torch.isnan(loss) and loss < 0:
         loss.backward()
         optimizer.step()
@@ -97,10 +138,10 @@ for it in range(start_iter, max_iter):
         model.save(os.path.join(checkpoint_root, 'checkpoints/model_%05i.pt' % (it + 1)))
         torch.save(optimizer.state_dict(),
                    os.path.join(checkpoint_root, 'checkpoints/optimizer.pt'))
-        np.savetxt(os.path.join(checkpoint_root, 'log/loss.csv'), loss_hist)
+        np.savetxt(os.path.join(checkpoint_root, 'log/loss.csv'), loss_log, delimiter=',',
+                   header=header_log, comments='')
         if args.tlimit is not None and (time() - start_time) / 3600 > args.tlimit:
             break
     
     if (it + 1) % config['train']['decay_iter'] == 0:
         lr_scheduler.step()
-    
