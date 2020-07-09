@@ -149,6 +149,12 @@ for it in range(start_iter, max_iter):
 
     if not torch.isnan(loss) and loss < 0:
         loss.backward()
+        if config['train']['gradient_norm'] is not None:
+            torch.nn.utils.clip_grad_norm_(model.parameters(),
+                                           config['train']['gradient_norm'])
+        if config['train']['gradient_value'] is not None:
+            torch.nn.utils.clip_grad_value_(model.parameters(),
+                                            config['train']['gradient_value'])
         optimizer.step()
     
     if (it + 1) % checkpoint_step == 0:
