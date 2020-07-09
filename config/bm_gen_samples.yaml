@@ -56,6 +56,10 @@ train:                              # Properties of the training procedure
   rkld:
     coeff: 0
     log: True
+    annealing:                      # If omitted, no annealing is done
+      type: null                    # If null, no annealing is done; can be lin or geom otherwise
+      length: 10000                 # Int, length of annealing schedule
+      start: 0.01                   # Double, start value of annealing parameter
   alphadiv:
     coeff: 0
     log: True
