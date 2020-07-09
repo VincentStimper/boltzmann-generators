@@ -74,7 +74,7 @@ if args.resume:
             optimizer.load_state_dict(torch.load(optimizer_path))
         loss_path = os.path.join(checkpoint_root, 'log/loss.csv')
         if os.path.exists(loss_path):
-            loss_hist = np.loadtxt(loss_path)
+            loss_log = np.loadtxt(loss_path, delimiter=',', skiprows=1)
         start_iter = int(latest_cp[-8:-3])
 if start_iter > 0:
     for _ in range(start_iter // config['train']['decay_iter']):
@@ -150,8 +150,6 @@ for it in range(start_iter, max_iter):
     if not torch.isnan(loss) and loss < 0:
         loss.backward()
         optimizer.step()
-    
-    loss_hist = np.append(loss_hist, loss.to('cpu').data.numpy())
     
     if (it + 1) % checkpoint_step == 0:
         model.save(os.path.join(checkpoint_root, 'checkpoints/model_%05i.pt' % (it + 1)))
