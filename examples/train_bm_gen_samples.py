@@ -90,7 +90,7 @@ for it in range(start_iter, max_iter):
 
     # Assemble loss
     loss = 0
-    loss_log_ = [logq.to('cpu').data.numpy(), logp.to('cpu').data.numpy()]
+    loss_log_ = [logq.mean().to('cpu').data.numpy(), logp.mean().to('cpu').data.numpy()]
     header_log = 'loss,logq,logp'
     if config['train']['fkld']['coeff'] > 0 or config['train']['fkld']['log']:
         ind = torch.randint(n_data, (batch_size,))
