@@ -58,6 +58,10 @@ optimizer = torch.optim.Adam(model.parameters(), lr=config['train']['learning_ra
 lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer=optimizer,
                                                       gamma=config['train']['rate_decay'])
 
+# Initialize model if desired
+if config['train']['init_model'] is not None:
+    model.load(config['train']['init_model'])
+
 # Resume training if needed
 start_iter = 0
 if args.resume:
@@ -72,8 +76,6 @@ if args.resume:
         if os.path.exists(loss_path):
             loss_hist = np.loadtxt(loss_path)
         start_iter = int(latest_cp[-8:-3])
-    elif config['train']['init_model'] is not None:
-        model.load(config['train']['init_model'])
 if start_iter > 0:
     for _ in range(start_iter // config['train']['decay_iter']):
         lr_scheduler.step()
