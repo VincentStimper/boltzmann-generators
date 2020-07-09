@@ -155,7 +155,6 @@ for it in range(start_iter, max_iter):
         model.save(os.path.join(checkpoint_root, 'checkpoints/model_%05i.pt' % (it + 1)))
         torch.save(optimizer.state_dict(),
                    os.path.join(checkpoint_root, 'checkpoints/optimizer.pt'))
-        print(loss_log)
         np.savetxt(os.path.join(checkpoint_root, 'log/loss.csv'), loss_log, delimiter=',',
                    header=header_log, comments='')
         if args.tlimit is not None and (time() - start_time) / 3600 > args.tlimit:
