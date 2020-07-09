@@ -141,9 +141,9 @@ for it in range(start_iter, max_iter):
         if config['train']['angle_loss']['coeff'] > 0:
             loss = loss + config['train']['angle_loss']['coeff'] * angle_loss
 
-    loss_log_ = [loss.to('cpu').data.numpy()] + loss_log_
+    loss_log_ = np.array([loss.to('cpu').data.numpy()] + loss_log_)[None, :]
     if loss_log is None:
-        loss_log = np.array(loss_log_)[None, :]
+        loss_log = loss_log_
     else:
         loss_log = np.concatenate([loss_log, loss_log_], 0)
 
