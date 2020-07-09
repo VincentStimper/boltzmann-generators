@@ -37,39 +37,34 @@ model:                              # Properties of the model
     init_zeros: False               # Bool, flag whether to initialize last layer of NNs with zeros
 
   snf:                              # Properties of the SNF layers
-    mcmc: True                      # Bool, flag whether to include an MCMC layer after each Real NVP
+    mcmc: False                     # Bool, flag whether to include an MCMC layer after each Real NVP
                                     # block, i.e. whether to classical or a stochastic normalizing flow
     proposal_std: 0.1               # Double, standard deviation of the Diagonal Gaussian proposal
                                     # distribution
     steps: 20                       # Int, number of MCMC steps to perform
-    lambda:                         # Double array, interpolation parameters between Boltzmann and
-      - 0.96                        # initial distribution
-      - 0.97
-      - 0.98
-      - 0.99
-      - 1.0
-    lambda_min:                     # Double array, interpolation parameters between Boltzmann and
-      - 0.1                         # initial distribution, if lambda_min and max are specified,
-      - 0.3                         # lambda is linearly interpolated within the given interval
-      - 0.5                         # in each MCMC layer
-      - 0.7
-      - 0.9
-    lambda_max:
-      - 0.2
-      - 0.4
-      - 0.6
-      - 0.8
-      - 1.0
 
 
 train:                              # Properties of the training procedure
   max_iter: 15000                   # Int, maximum number of iteration
   batch_size: 256                   # Int, batch size used during training
-  angle_loss: False                 # Flag, true if angle loss shall be included
+  angle_loss:
+    coeff: 0                        # Coefficient of angle loss
+    log: True                       # Flag, if true angle loss is saved so log file
+  fkld:
+    coeff: 0
+    log: True
+  rkld:
+    coeff: 0
+    log: True
+  alphadiv:
+    coeff: 0
+    log: True
+    alpha: 1
   learning_rate: 1.e-4              # Double, learning rate used during training
   rate_decay: 0.25                  # Double, learning rate decay factor
   decay_iter: 5000                  # Int, number of iteration after which the learning rate should be
                                     # decreased
   weight_decay: 1.e-5               # Double, regularization parameter
+  init_model: null                  # Path to model used to initialize training
   checkpoint_iter: 100              # Int, number of iterations after which checkpoint is saved
   checkpoint_root: ./               # String, path to checkpoint directory
