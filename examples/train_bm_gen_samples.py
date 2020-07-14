@@ -147,7 +147,7 @@ for it in range(start_iter, max_iter):
     else:
         loss_log = np.concatenate([loss_log, loss_log_], 0)
 
-    if not torch.isnan(loss) and loss < 0:
+    if not torch.isnan(loss):
         loss.backward()
         if config['train']['gradient_norm'] is not None:
             torch.nn.utils.clip_grad_norm_(model.parameters(),
