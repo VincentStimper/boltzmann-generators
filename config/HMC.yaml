@@ -28,7 +28,8 @@ initial_dist_model:
   load_model_path: "models/rnvp_aldp_no_const_30k.pt"
   final_flow_idx_for_loaded_model: 15 #For loading the coord transform params
   device: cpu
-  scaling: 1.05 # if not null then will apply this scaling to rnvp
+  scaling: 1.2 # if not null then will apply this scaling to rnvp
+  noise_std: null # if not null then will add gaussian noise with this std to the output of the initial distribution
 
 hmc:
   chain_length: 30
@@ -36,7 +37,7 @@ hmc:
   starting_step_size: 0.01 # initial step size used in all layers and dims
   starting_log_mass: 0.0 # initial log mass used in all layers and dims
 
-full_model_path:  'saved_data/0407scaledEItrain/model_ckpt_hmc_length_30_iter_750'
+full_model_path:  'saved_data/1307_fiftyscale_EI/model_ckpt_hmc_length_30_iter_500'
 
 ei_training:
   do_training: False
@@ -67,9 +68,9 @@ hmc_grid_search_choose_best_hpams:
   ksd_dict_path: 'saved_data/2206gridKSDs.npy'
 
 general_calc_KSD: # Just calculate the KSD for given samples
-  do_general_calc: False
-  samples_path: 'saved_data/1506eisamples.npy'
-  save_path: 'saved_data/1506eiKSDs.npy'
+  do_general_calc: True
+  samples_path: 'saved_data/1807_3stdgaussianMegaSamples.npy'
+  save_path: null
   h_square_val: null # If given, use this for KSD calculations
   samples_to_estimate_median: 10000 # If no h_square_val given, then use this number of samples to estimate h_square
   use_block: True # whether to use the block KSD function (used for large samples sizes)
@@ -102,4 +103,11 @@ grid_search_kl_calc:
   sample_dict_path: 'saved_data/2206gridsearch.npy'
   KL_direction: 'forward' # forward = KL(training_data || samples) #reverse = KL(samples||training_data)
   kls_save_path: 'saved_data/0307gridKLcalc/gridKLs_forwardmean.npy'
+
+# Evaluate the log target at samples
+eval_log_target:
+  do_eval: False
+  samples: 'saved_data/1607_1_50scale_EIMegaSamples.npy'
+  num_split: 10
+  save_path: 'saved_data/1707_logtargets/1_50.txt'
 

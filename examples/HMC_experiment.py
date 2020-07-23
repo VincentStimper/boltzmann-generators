@@ -41,10 +41,9 @@ def main():
     #     default=0)
     # 
     # args = parser.parse_args()
-
-    # this should be able to be set from the command line
+    # 
     # config = bg.utils.get_config(args.config)
-    # config = bg.utils.get_config('saved_data/0207trainingdataKSD/HMC.yaml')
+    # config = bg.utils.get_config('saved_data/1007_10percentnoise_EI/HMC.yaml')
     config = bg.utils.get_config('../config/HMC.yaml')
 
     class FlowHMC(nn.Module):
@@ -189,6 +188,12 @@ def main():
                     raw_flows += [bg.flows.Scaling(torch.mean(x, 0),
                         torch.tensor(config['initial_dist_model']['scaling']))]
 
+            if config['initial_dist_model']['noise_std'] is not None:
+                print("adding Gaussian noise layer, using noise std:",
+                    config['initial_dist_model']['noise_std'])
+                raw_flows += [bg.flows.AddNoise(
+                    torch.tensor(config['initial_dist_model']['noise_std']))]
+
             self.end_init_flow_idx = len(raw_flows)
 
             # Add HMC layers
@@ -208,6 +213,8 @@ def main():
 
         def load_model_for_initial_flow(self, config, reporting=False):
             # Loads parameters into the inital flow from the given path
+            print("Loading initial flow model:",
+                config['initial_dist_model']['load_model_path'])
             loaded_param_dict = torch.load(config['initial_dist_model']['load_model_path'],
                 map_location=torch.device(config['initial_dist_model']['device']))
             with torch.no_grad():
@@ -424,6 +431,8 @@ def main():
     # do a general calculation of KSD values for given samples
     if config['general_calc_KSD']['do_general_calc']:
         print("Doing general KSD calculation")
+        print("loading samples file",
+            config['general_calc_KSD']['samples_path'])
         samples = np.load(config['general_calc_KSD']['samples_path'])
 
         # convert to internal coords
@@ -656,7 +665,43 @@ def main():
             config['grid_search_kl_calc']['kls_save_path'])
         np.save(config['grid_search_kl_calc']['kls_save_path'], kls_dict)
 
+    if config['eval_log_target']['do_eval']:
+        print("Evaluating log target at samples",
+            config['eval_log_target']['samples'])
+        samples = np.load(config['eval_log_target']['samples'])
+
+        # convert to internal coords
+        pyt_samples = torch.from_numpy(samples)
+        samples, _ = flowhmc.flows[-1].inverse(pyt_samples)
+
+        # remove any nans
+        num_samples = samples.shape[0]
+        samples = samples[~torch.isnan(samples).any(axis=1)]
+        num_nans = num_samples - samples.shape[0]
+        print("removed", num_nans, " nan values.", num_nans/num_samples,
+            "proportion of total samples")
+
+        if config['eval_log_target']['num_split'] is not None:
+            indeces = np.floor(np.linspace(0, samples.shape[0],
+                num=config['eval_log_target']['num_split']+1)).astype(int)
+            mean_log_targets = []
+            for i in range(len(indeces)-1):
+                sub_samples = samples[indeces[i]:indeces[i+1],:]
+                log_targets = flowhmc.flows[-2].target.log_prob(sub_samples)
+                mean_log_targets.append(np.mean(log_targets.detach().numpy()))
+                print("Mean log target", mean_log_targets[-1])
+            mean_log_targets = np.array(mean_log_targets)
+            np.savetxt(config['eval_log_target']['save_path'], mean_log_targets)
+        else:
+            log_targets = flowhmc.flows[-2].target.log_prob(samples)
+            mean_log_target = np.mean(log_targets.detach().numpy())
+            print("Mean log target", mean_log_target)
+            np.savetxt(config['eval_log_target']['save_path'],
+                np.array([mean_log_target]))
+
+
+
+
 
 if __name__ == "__main__":
     main()
-

@@ -27,6 +27,7 @@ def KSD(z, Sqx, in_h_square=None):
         h_square = 0.5 * median / np.log(K+1.0)
     else:
         h_square = in_h_square
+    print("h_square", h_square)
     Kxy = np.exp(- pdist_square / h_square / 2.0)
 
     # now compute KSD

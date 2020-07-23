@@ -1,6 +1,7 @@
 from . import mixed
 import normflow as nf
 import numpy as np
+import torch
 
 class CoordinateTransform(nf.flows.Flow):
     """
@@ -53,3 +54,24 @@ class Scaling(nf.flows.Flow):
         z_ = (z-self.mean) / self.scale + self.mean
         logdet = -np.log(self.scale) * self.mean.shape[0]
         return z_, logdet
+
+class AddNoise(nf.flows.Flow):
+    """
+    Adds a small amount of Gaussian noise
+    """
+    def __init__(self, std):
+        """
+        Constructor
+        :param std: The standard deviation of the noise
+        """
+        super().__init__()
+        self.register_buffer('noise_std', std)
+
+    def forward(self, z):
+        eps = torch.randn_like(z)
+        z_ = z + self.noise_std * eps
+        logdet = torch.zeros(z_.shape[0])
+        return z_, logdet
+
+    def inverse(self, z):
+        return self.forward(z)
