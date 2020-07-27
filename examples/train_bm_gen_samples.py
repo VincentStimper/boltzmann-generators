@@ -126,8 +126,13 @@ for it in range(start_iter, max_iter):
         if config['train']['rkld']['coeff'] > 0:
             loss = loss + config['train']['rkld']['coeff'] * rkld
     if config['train']['alphadiv']['coeff'] > 0 or config['train']['alphadiv']['log']:
-        alphadiv = -torch.logsumexp(config['train']['alphadiv']['alpha'] * (logp - logq), 0) \
-                   + np.log(logp.shape[0])
+        if 'decay' in config['train']['alphadiv']:
+            alpha = config['train']['alphadiv']['alpha']\
+                    * config['train']['alphadiv']['decay']['rate'] \
+                    ** np.floor(it / config['train']['alphadiv']['decay']['iter'])
+        else:
+            alpha = config['train']['alphadiv']['alpha']
+        alphadiv = -torch.logsumexp(alpha * (logp - logq), 0) + np.log(logp.shape[0])
         if config['train']['alphadiv']['log']:
             header_log += ',alphadiv'
             loss_log_.append(alphadiv.to('cpu').data.numpy())
