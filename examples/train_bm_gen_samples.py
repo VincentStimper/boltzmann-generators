@@ -129,7 +129,7 @@ for it in range(start_iter, max_iter):
         if 'decay' in config['train']['alphadiv']:
             alpha = config['train']['alphadiv']['alpha']\
                     * config['train']['alphadiv']['decay']['rate'] \
-                    ** np.floor(it / config['train']['alphadiv']['decay']['iter'])
+                    ** (it / config['train']['alphadiv']['decay']['iter'])
         else:
             alpha = config['train']['alphadiv']['alpha']
         alphadiv = -torch.logsumexp(alpha * (logp - logq), 0) + np.log(logp.shape[0])
