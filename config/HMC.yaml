@@ -4,7 +4,7 @@ system:
 
   name: AlanineDipeptideVacuum
   temperature: 1000
-  energy_cut: 1.e+2
+  energy_cut: 1.e+7 # 2
   energy_max: 1.e+20
   platform: CPU
   precision: double
@@ -28,14 +28,16 @@ initial_dist_model:
   load_model_path: "models/rnvp_aldp_no_const_30k.pt"
   final_flow_idx_for_loaded_model: 15 #For loading the coord transform params
   device: cpu
+  scaling: 1.0 # if not null then will apply this scaling to rnvp
+  noise_std: null # if not null then will add gaussian noise with this std to the output of the initial distribution
 
 hmc:
-  chain_length: 30
+  chain_length: 30 #30
   leapfrog_steps: 10
   starting_step_size: 0.01 # initial step size used in all layers and dims
   starting_log_mass: 0.0 # initial log mass used in all layers and dims
 
-full_model_path: null # if given, loads this model
+full_model_path:  null
 
 ei_training:
   do_training: False
@@ -67,8 +69,8 @@ hmc_grid_search_choose_best_hpams:
 
 general_calc_KSD: # Just calculate the KSD for given samples
   do_general_calc: False
-  samples_path: 'saved_data/1506eisamples.npy'
-  save_path: 'saved_data/1506eiKSDs.npy'
+  samples_path: 'saved_data/1807_3stdgaussianMegaSamples.npy'
+  save_path: null
   h_square_val: null # If given, use this for KSD calculations
   samples_to_estimate_median: 10000 # If no h_square_val given, then use this number of samples to estimate h_square
   use_block: True # whether to use the block KSD function (used for large samples sizes)
@@ -94,3 +96,36 @@ estimate_kl:
   samples_file: 'saved_data/2706eisamples.npy'
   num_samples: 100000 # If given, only take this number of samples from the sample file
   save_name: 'saved_data/0207KLcalcs/EI_KLs.txt'
+
+# Compute the KL divergence for samples from a grid of different parameter values
+grid_search_kl_calc:
+  do_kl_calc: False
+  sample_dict_path: 'saved_data/2206gridsearch.npy'
+  KL_direction: 'forward' # forward = KL(training_data || samples) #reverse = KL(samples||training_data)
+  kls_save_path: 'saved_data/0307gridKLcalc/gridKLs_forwardmean.npy'
+
+# Evaluate the log target at samples
+eval_log_target:
+  do_eval: False
+  samples: 'saved_data/1207_10percentnoise_EIMegaSamples.npy'
+  num_split: 10
+  save_path: 'saved_data/1707_logtargets/10_percent_noise.txt'
+
+estimate_sksd:
+  do_estimation: False
+  samples: 'saved_data/1607_1_50scale_EIMegaSamples.npy'
+  num_median: 1000
+  num_samples_in_batch: 10000
+  num_blocks: 10
+  num_batches: 10
+  save_name: 'saved_data/2507_sksds/1_00.txt'
+
+train_ei_sksd:
+  do_train: False
+  iters: 1000
+  samples_per_iter: 100
+  ei_lr: 1.e-2
+  sksd_lr: 1.e-3
+  save_interval: 50
+  save_path: 'saved_data/2407_eisksd_train/' 
+

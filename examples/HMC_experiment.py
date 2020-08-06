@@ -41,10 +41,9 @@ def main():
     #     default=0)
     # 
     # args = parser.parse_args()
-
-    # this should be able to be set from the command line
+    # 
     # config = bg.utils.get_config(args.config)
-    # config = bg.utils.get_config('saved_data/0207trainingdataKSD/HMC.yaml')
+    # config = bg.utils.get_config('saved_data/0208_highercut_sksds/HMC.yaml')
     config = bg.utils.get_config('../config/HMC.yaml')
 
     class FlowHMC(nn.Module):
@@ -178,6 +177,25 @@ def main():
                 if config['initial_dist_model']['actnorm']:
                     raw_flows += [nf.flows.ActNorm(latent_size)]
 
+
+            if config['initial_dist_model']['scaling'] is not None:
+                print("adding scaling layer, using scaling:",
+                    config['initial_dist_model']['scaling'])
+                with torch.no_grad():
+                    x, _ = self.rnvp_initial_dist.forward(100000)
+                    for i in range(len(raw_flows)):
+                        x, _ = raw_flows[i].forward(x)
+                    raw_flows += [bg.flows.Scaling(torch.mean(x, 0),
+                        torch.tensor(config['initial_dist_model']['scaling']))]
+
+            if config['initial_dist_model']['noise_std'] is not None:
+                print("adding Gaussian noise layer, using noise std:",
+                    config['initial_dist_model']['noise_std'])
+                raw_flows += [bg.flows.AddNoise(
+                    torch.tensor(config['initial_dist_model']['noise_std']))]
+
+            self.end_init_flow_idx = len(raw_flows)
+
             # Add HMC layers
             for i in range(config['hmc']['chain_length']):
                 step_size = config['hmc']['starting_step_size'] * \
@@ -192,11 +210,11 @@ def main():
 
             self.flows = nn.ModuleList(raw_flows)
 
-            self.end_init_flow_idx = len(self.flows) - 1 - \
-                config['hmc']['chain_length']
 
         def load_model_for_initial_flow(self, config, reporting=False):
             # Loads parameters into the inital flow from the given path
+            print("Loading initial flow model:",
+                config['initial_dist_model']['load_model_path'])
             loaded_param_dict = torch.load(config['initial_dist_model']['load_model_path'],
                 map_location=torch.device(config['initial_dist_model']['device']))
             with torch.no_grad():
@@ -237,10 +255,12 @@ def main():
                 x, _ = self.flows[i].forward(x)
             return x
         
-        def sample(self, num_samples):
+        def sample(self, num_samples, require_grad=True):
             # Draw samples from the full initial distribution plus hmc flow
             x, _ = self.rnvp_initial_dist.forward(num_samples)
             for flow in self.flows:
+                if not require_grad:
+                    x = x.detach()
                 x, _ = flow.forward(x)
             return x
 
@@ -413,6 +433,8 @@ def main():
     # do a general calculation of KSD values for given samples
     if config['general_calc_KSD']['do_general_calc']:
         print("Doing general KSD calculation")
+        print("loading samples file",
+            config['general_calc_KSD']['samples_path'])
         samples = np.load(config['general_calc_KSD']['samples_path'])
 
         # convert to internal coords
@@ -502,8 +524,11 @@ def main():
             
     # Just generate some samples and save them
     if config['generate_samples']['do_generation']:
+        print("Generating samples")
         for batch_num in range(config['generate_samples']['num_repeats']):
-            samples = flowhmc.sample(config['generate_samples']['num_samples'])
+            # Don't track gradients as we are just sampling
+            samples = flowhmc.sample(config['generate_samples']['num_samples'],
+                require_grad=False)
             save_name = config['generate_samples']['save_path'] + \
                 config['generate_samples']['save_name_base'] + \
                 '_batch_num_' + str(batch_num)
@@ -583,7 +608,224 @@ def main():
         print("Dihedral group statistics:")
         print_stats(dihedral_kls)
 
+    # Compute KL values for a grid of samples from different parameter values
+    if config['grid_search_kl_calc']['do_kl_calc']:
+        print("Finding KLs over grid of samples")
+        print("Loading sample dict file",
+            config['grid_search_kl_calc']['sample_dict_path'])
+        samples_dict = np.load(
+            config['grid_search_kl_calc']['sample_dict_path'],
+            allow_pickle=True)
+        samples_dict = samples_dict.item()
+
+        # convert samples to internal coords
+        for key in samples_dict:
+            samples = torch.from_numpy(samples_dict[key])
+            ic_samples, _ = flowhmc.flows[-1].inverse(samples)
+            samples_dict[key] = ic_samples.detach().numpy()
+
+        # remove any nans
+        total_samples = 0
+        total_nans = 0
+        for key in samples_dict:
+            num_samples = samples_dict[key].shape[0]
+
+            samples_dict[key] = \
+                samples_dict[key][~np.isnan(samples_dict[key]).any(axis=1)]
+
+            num_nans = num_samples - samples_dict[key].shape[0]
+            total_samples += num_samples
+            total_nans += num_nans
+        print("removed ", total_nans, " nan values.", total_nans/total_samples,
+            "proportion of total samples")
+
+        ic_training_data, _ = flowhmc.flows[-1].inverse(flowhmc.training_data)
+        ic_training_data = ic_training_data.detach().numpy()
+
+        rangeminmax = 7
+
+        def kl(samples, training_data):
+            if config['grid_search_kl_calc']['KL_direction'] == 'forward':
+                return bg.utils.estimate_kl(training_data, samples, -rangeminmax,
+                    rangeminmax)
+            elif config['grid_search_kl_calc']['KL_direction'] == 'reverse':
+                return bg.utils.estimate_kl(samples, training_data, -rangeminmax,
+                    rangeminmax)
+            else:
+                print("Given an unknown KL direction in the config file:",
+                    config['grid_search_kl_calc']['KL_direction'])
+
+        kls_dict = {}
+        print("Computing KLs")
+        for key in tqdm(samples_dict):
+            kls = []
+            for i in range(60):
+                kls.append(kl(samples_dict[key][:, i], ic_training_data[:, i]))
+            kls = np.array(kls)
+            print(kls)
+            kls_dict[key] = kls
+
+        print("Saving KL dict at", 
+            config['grid_search_kl_calc']['kls_save_path'])
+        np.save(config['grid_search_kl_calc']['kls_save_path'], kls_dict)
+
+    if config['eval_log_target']['do_eval']:
+        print("Evaluating log target at samples",
+            config['eval_log_target']['samples'])
+        samples = np.load(config['eval_log_target']['samples'])
+
+        # convert to internal coords
+        pyt_samples = torch.from_numpy(samples)
+        samples, _ = flowhmc.flows[-1].inverse(pyt_samples)
+
+        # remove any nans
+        num_samples = samples.shape[0]
+        samples = samples[~torch.isnan(samples).any(axis=1)]
+        num_nans = num_samples - samples.shape[0]
+        print("removed", num_nans, " nan values.", num_nans/num_samples,
+            "proportion of total samples")
+
+        if config['eval_log_target']['num_split'] is not None:
+            indeces = np.floor(np.linspace(0, samples.shape[0],
+                num=config['eval_log_target']['num_split']+1)).astype(int)
+            mean_log_targets = []
+            for i in range(len(indeces)-1):
+                sub_samples = samples[indeces[i]:indeces[i+1],:]
+                log_targets = flowhmc.flows[-2].target.log_prob(sub_samples)
+                mean_log_targets.append(np.mean(log_targets.detach().numpy()))
+                print("Mean log target", mean_log_targets[-1])
+            mean_log_targets = np.array(mean_log_targets)
+            np.savetxt(config['eval_log_target']['save_path'], mean_log_targets)
+        else:
+            log_targets = flowhmc.flows[-2].target.log_prob(samples)
+            mean_log_target = np.mean(log_targets.detach().numpy())
+            print("Mean log target", mean_log_target)
+            np.savetxt(config['eval_log_target']['save_path'],
+                np.array([mean_log_target]))
+
+    if config['estimate_sksd']['do_estimation']:
+        print("Estimating SKSD with samples",
+            config['estimate_sksd']['samples'])
+
+        samples = np.load(config['estimate_sksd']['samples'])
+
+        g = torch.eye(60).double()
+
+
+        # convert to internal coords
+        print("Converting to internal coords")
+        pyt_samples = torch.from_numpy(samples).double()
+        ic_samples, _ = flowhmc.flows[-1].inverse(pyt_samples)
+
+        # Median estimation
+        proj_x = torch.matmul(ic_samples, g.transpose(0,1)) # (N x dim)
+        transpose_proj_x = torch.transpose(proj_x, 0, 1)
+        exp_transpose_proj_x = torch.unsqueeze(transpose_proj_x, 2) # (dim x N x 1)
+        exp_transpose_proj_x = exp_transpose_proj_x.contiguous()
+        num_median = config['estimate_sksd']['num_median']
+        squared_pairwise_distances = torch.cdist(
+            exp_transpose_proj_x[:, 0:num_median, :],
+            exp_transpose_proj_x[:, 0:num_median, :]) ** 2
+        median_squared_distances = torch.median(
+            torch.flatten(squared_pairwise_distances, start_dim=1, end_dim=2),
+            dim=1)[0]
+
+        # get gradient values
+        print("Getting gradients")
+        gradlogp = flowhmc.flows[-2].gradlogP(ic_samples)
+
+
+        print("Calculating SKSDs")
+        num_samples = config['estimate_sksd']['num_samples_in_batch']
+        num_batches = config['estimate_sksd']['num_batches']
+        num_blocks = config['estimate_sksd']['num_blocks']
+        sksds = []
+        for i in range(num_batches):
+            sub_samples = ic_samples[i*num_samples:(i+1)*num_samples,:]
+            sub_grads = gradlogp[i*num_samples:(i+1)*num_samples,:]
+            sksd = bg.utils.blockSKSD(sub_samples, sub_grads, g, num_blocks,
+                input_median=median_squared_distances)
+            print(i, sksd)
+            sksds.append(sksd.detach().numpy())
+        sksds = np.array(sksds)
+        np.savetxt(config['estimate_sksd']['save_name'], sksds)
+
+
+    if config['train_ei_sksd']['do_train']:
+        print("Training with EI and SKSD")
+        hmc_optimizer = torch.optim.Adam(flowhmc.get_hmc_parameters(),
+            lr=config['train_ei_sksd']['ei_lr'])
+        scale_optimizer = torch.optim.Adam(
+            [flowhmc.flows[flowhmc.end_init_flow_idx-1].scale],
+            lr=config['train_ei_sksd']['sksd_lr'])
+        ei_losses = np.array([])
+        sksd_losses = np.array([])
+        scales = np.array([])
+
+        save_name_base = "hmc_ei_sksd_"
+
+        if config['train_ei_sksd']['continue_iter'] is not None:
+            continue_iter = config['train_ei_sksd']['continue_iter']
+        else:
+            continue_iter = 0
+
+        print("Iter    EI loss     SKSD      scale")
+        for iter in range(config['train_ei_sksd']['iters']):
+            hmc_optimizer.zero_grad()
+
+            x, _ = flowhmc.rnvp_initial_dist.forward(
+                config['train_ei_sksd']['samples_per_iter'])
+            for i in range(len(flowhmc.flows)-1):
+                x, _ = flowhmc.flows[i].forward(x)
+            
+            log_probs = flowhmc.target_dist.log_prob(x)
+            ei_loss = -torch.mean(log_probs)
+
+            if not torch.isnan(ei_loss):
+                ei_loss.backward(retain_graph=True)
+            hmc_optimizer.step()
+
+            scale_optimizer.zero_grad()
+            gradlogp = flowhmc.flows[-2].gradlogP(x)
+            g = torch.eye(60).double()
+            sksd = bg.utils.SKSD(x, gradlogp, g)
+            sksd.backward()
+            scale_optimizer.step()
+
+            print("{:4}".format(iter),
+                "{:10.4f}".format(ei_loss),
+                "{:10.4f}".format(sksd),
+                "{:10.4f}".format(flowhmc.flows[flowhmc.end_init_flow_idx-1].scale))
+
+            ei_losses = np.append(ei_losses, ei_loss.detach().numpy())
+            sksd_losses = np.append(sksd_losses, sksd.detach().numpy())
+            scales = np.append(scales,
+                flowhmc.flows[flowhmc.end_init_flow_idx-1].scale.detach().numpy())
+
+
+            if iter%config['train_ei_sksd']['save_interval'] == 0:
+                data = np.zeros((iter+1, 3))
+                data[:,0] = ei_losses
+                data[:,1] = sksd_losses
+                data[:,2] = scales
+                np.savetxt(config['train_ei_sksd']['save_path'] + "trainprog_" + \
+                    save_name_base + "_ckpt_{}".format(continue_iter + iter), data)
+                torch.save(flowhmc.state_dict(), config['train_ei_sksd']['save_path'] + \
+                    "model_ckpt_" + save_name_base + "_iter_{}".format(continue_iter + iter))
+        data = np.zeros((config['train_ei_sksd']['iters'], 3))
+        data[:,0] = ei_losses
+        data[:,1] = sksd_losses
+        data[:,2] = scales
+        np.savetxt(config['train_ei_sksd']['save_path'] + "trainprog_" + \
+            save_name_base + "_final", data)
+        torch.save(flowhmc.state_dict(), config['train_ei_sksd']['save_path'] + \
+            "model_ckpt_" + save_name_base + "_final")
+
+
+
 
 if __name__ == "__main__":
     main()
 
+
+# %%

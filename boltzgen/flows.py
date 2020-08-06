@@ -1,5 +1,7 @@
 from . import mixed
 import normflow as nf
+import numpy as np
+import torch
 
 class CoordinateTransform(nf.flows.Flow):
     """
@@ -28,3 +30,48 @@ class CoordinateTransform(nf.flows.Flow):
     def inverse(self, z):
         z_, log_det = self.mixed_transform.forward(z)
         return z_, log_det
+
+class Scaling(nf.flows.Flow):
+    """
+    Applys a scaling factor
+    """
+    def __init__(self, mean, scale):
+        """
+        Constructor
+        :param means: The mean of the previous layer
+        :param scale: scale factor to apply
+        """
+        super().__init__()
+        self.register_buffer('mean', mean)
+        self.register_parameter('scale', torch.nn.Parameter(scale))
+
+    def forward(self, z):
+        z_ = (z-self.mean) * self.scale + self.mean
+        logdet = torch.log(self.scale) * self.mean.shape[0]
+        return z_, logdet
+
+    def inverse(self, z):
+        z_ = (z-self.mean) / self.scale + self.mean
+        logdet = -torch.log(self.scale) * self.mean.shape[0]
+        return z_, logdet
+
+class AddNoise(nf.flows.Flow):
+    """
+    Adds a small amount of Gaussian noise
+    """
+    def __init__(self, std):
+        """
+        Constructor
+        :param std: The standard deviation of the noise
+        """
+        super().__init__()
+        self.register_buffer('noise_std', std)
+
+    def forward(self, z):
+        eps = torch.randn_like(z)
+        z_ = z + self.noise_std * eps
+        logdet = torch.zeros(z_.shape[0])
+        return z_, logdet
+
+    def inverse(self, z):
+        return self.forward(z)
