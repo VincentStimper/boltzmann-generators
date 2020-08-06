@@ -43,16 +43,16 @@ class Scaling(nf.flows.Flow):
         """
         super().__init__()
         self.register_buffer('mean', mean)
-        self.register_buffer('scale', scale)
+        self.register_parameter('scale', torch.nn.Parameter(scale))
 
     def forward(self, z):
         z_ = (z-self.mean) * self.scale + self.mean
-        logdet = np.log(self.scale) * self.mean.shape[0]
+        logdet = torch.log(self.scale) * self.mean.shape[0]
         return z_, logdet
 
     def inverse(self, z):
         z_ = (z-self.mean) / self.scale + self.mean
-        logdet = -np.log(self.scale) * self.mean.shape[0]
+        logdet = -torch.log(self.scale) * self.mean.shape[0]
         return z_, logdet
 
 class AddNoise(nf.flows.Flow):

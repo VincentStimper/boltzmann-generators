@@ -43,7 +43,7 @@ def main():
     # args = parser.parse_args()
     # 
     # config = bg.utils.get_config(args.config)
-    # config = bg.utils.get_config('saved_data/1007_10percentnoise_EI/HMC.yaml')
+    # config = bg.utils.get_config('saved_data/0208_highercut_sksds/HMC.yaml')
     config = bg.utils.get_config('../config/HMC.yaml')
 
     class FlowHMC(nn.Module):
@@ -699,8 +699,123 @@ def main():
             np.savetxt(config['eval_log_target']['save_path'],
                 np.array([mean_log_target]))
 
+    if config['estimate_sksd']['do_estimation']:
+        print("Estimating SKSD with samples",
+            config['estimate_sksd']['samples'])
+
+        samples = np.load(config['estimate_sksd']['samples'])
+
+        g = torch.eye(60).double()
 
 
+        # convert to internal coords
+        print("Converting to internal coords")
+        pyt_samples = torch.from_numpy(samples).double()
+        ic_samples, _ = flowhmc.flows[-1].inverse(pyt_samples)
+
+        # Median estimation
+        proj_x = torch.matmul(ic_samples, g.transpose(0,1)) # (N x dim)
+        transpose_proj_x = torch.transpose(proj_x, 0, 1)
+        exp_transpose_proj_x = torch.unsqueeze(transpose_proj_x, 2) # (dim x N x 1)
+        exp_transpose_proj_x = exp_transpose_proj_x.contiguous()
+        num_median = config['estimate_sksd']['num_median']
+        squared_pairwise_distances = torch.cdist(
+            exp_transpose_proj_x[:, 0:num_median, :],
+            exp_transpose_proj_x[:, 0:num_median, :]) ** 2
+        median_squared_distances = torch.median(
+            torch.flatten(squared_pairwise_distances, start_dim=1, end_dim=2),
+            dim=1)[0]
+
+        # get gradient values
+        print("Getting gradients")
+        gradlogp = flowhmc.flows[-2].gradlogP(ic_samples)
+
+
+        print("Calculating SKSDs")
+        num_samples = config['estimate_sksd']['num_samples_in_batch']
+        num_batches = config['estimate_sksd']['num_batches']
+        num_blocks = config['estimate_sksd']['num_blocks']
+        sksds = []
+        for i in range(num_batches):
+            sub_samples = ic_samples[i*num_samples:(i+1)*num_samples,:]
+            sub_grads = gradlogp[i*num_samples:(i+1)*num_samples,:]
+            sksd = bg.utils.blockSKSD(sub_samples, sub_grads, g, num_blocks,
+                input_median=median_squared_distances)
+            print(i, sksd)
+            sksds.append(sksd.detach().numpy())
+        sksds = np.array(sksds)
+        np.savetxt(config['estimate_sksd']['save_name'], sksds)
+
+
+    if config['train_ei_sksd']['do_train']:
+        print("Training with EI and SKSD")
+        hmc_optimizer = torch.optim.Adam(flowhmc.get_hmc_parameters(),
+            lr=config['train_ei_sksd']['ei_lr'])
+        scale_optimizer = torch.optim.Adam(
+            [flowhmc.flows[flowhmc.end_init_flow_idx-1].scale],
+            lr=config['train_ei_sksd']['sksd_lr'])
+        ei_losses = np.array([])
+        sksd_losses = np.array([])
+        scales = np.array([])
+
+        save_name_base = "hmc_ei_sksd_"
+
+        if config['train_ei_sksd']['continue_iter'] is not None:
+            continue_iter = config['train_ei_sksd']['continue_iter']
+        else:
+            continue_iter = 0
+
+        print("Iter    EI loss     SKSD      scale")
+        for iter in range(config['train_ei_sksd']['iters']):
+            hmc_optimizer.zero_grad()
+
+            x, _ = flowhmc.rnvp_initial_dist.forward(
+                config['train_ei_sksd']['samples_per_iter'])
+            for i in range(len(flowhmc.flows)-1):
+                x, _ = flowhmc.flows[i].forward(x)
+            
+            log_probs = flowhmc.target_dist.log_prob(x)
+            ei_loss = -torch.mean(log_probs)
+
+            if not torch.isnan(ei_loss):
+                ei_loss.backward(retain_graph=True)
+            hmc_optimizer.step()
+
+            scale_optimizer.zero_grad()
+            gradlogp = flowhmc.flows[-2].gradlogP(x)
+            g = torch.eye(60).double()
+            sksd = bg.utils.SKSD(x, gradlogp, g)
+            sksd.backward()
+            scale_optimizer.step()
+
+            print("{:4}".format(iter),
+                "{:10.4f}".format(ei_loss),
+                "{:10.4f}".format(sksd),
+                "{:10.4f}".format(flowhmc.flows[flowhmc.end_init_flow_idx-1].scale))
+
+            ei_losses = np.append(ei_losses, ei_loss.detach().numpy())
+            sksd_losses = np.append(sksd_losses, sksd.detach().numpy())
+            scales = np.append(scales,
+                flowhmc.flows[flowhmc.end_init_flow_idx-1].scale.detach().numpy())
+
+
+            if iter%config['train_ei_sksd']['save_interval'] == 0:
+                data = np.zeros((iter+1, 3))
+                data[:,0] = ei_losses
+                data[:,1] = sksd_losses
+                data[:,2] = scales
+                np.savetxt(config['train_ei_sksd']['save_path'] + "trainprog_" + \
+                    save_name_base + "_ckpt_{}".format(continue_iter + iter), data)
+                torch.save(flowhmc.state_dict(), config['train_ei_sksd']['save_path'] + \
+                    "model_ckpt_" + save_name_base + "_iter_{}".format(continue_iter + iter))
+        data = np.zeros((config['train_ei_sksd']['iters'], 3))
+        data[:,0] = ei_losses
+        data[:,1] = sksd_losses
+        data[:,2] = scales
+        np.savetxt(config['train_ei_sksd']['save_path'] + "trainprog_" + \
+            save_name_base + "_final", data)
+        torch.save(flowhmc.state_dict(), config['train_ei_sksd']['save_path'] + \
+            "model_ckpt_" + save_name_base + "_final")
 
 
 if __name__ == "__main__":
