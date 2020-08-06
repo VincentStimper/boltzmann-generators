@@ -33,18 +33,18 @@ from tqdm import tqdm
 
 def main():
 
-    # parser = argparse.ArgumentParser(description="Run experiments/generate samples from HMC chains")
-    # 
-    # parser.add_argument('--config', type=str, help='Path to config file specifying the experiment details',
-    #     default='../config/HMC.yaml')
-    # parser.add_argument('--processID', type=int, help='When generating batches of samples in parallel, this ID can be appended to file names to differentiate between processes',
-    #     default=0)
-    # 
-    # args = parser.parse_args()
-    # 
-    # config = bg.utils.get_config(args.config)
-    # config = bg.utils.get_config('saved_data/0208_highercut_sksds/HMC.yaml')
-    config = bg.utils.get_config('../config/HMC.yaml')
+    parser = argparse.ArgumentParser(description="Run experiments/generate samples from HMC chains")
+
+    parser.add_argument('--config', type=str,
+                        help='Path to config file specifying the experiment details',
+                        default='../config/HMC.yaml')
+    parser.add_argument('--processID', type=int,
+                        help='When generating batches of samples in parallel, this ID can be appended to file names to differentiate between processes',
+                        default=0)
+
+    args = parser.parse_args()
+
+    config = bg.utils.get_config(args.config)
 
     class FlowHMC(nn.Module):
         """
