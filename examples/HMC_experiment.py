@@ -255,10 +255,12 @@ def main():
                 x, _ = self.flows[i].forward(x)
             return x
         
-        def sample(self, num_samples):
+        def sample(self, num_samples, require_grad=True):
             # Draw samples from the full initial distribution plus hmc flow
             x, _ = self.rnvp_initial_dist.forward(num_samples)
             for flow in self.flows:
+                if not require_grad:
+                    x = x.detach()
                 x, _ = flow.forward(x)
             return x
 
@@ -524,7 +526,9 @@ def main():
     if config['generate_samples']['do_generation']:
         print("Generating samples")
         for batch_num in range(config['generate_samples']['num_repeats']):
-            samples = flowhmc.sample(config['generate_samples']['num_samples'])
+            # Don't track gradients as we are just sampling
+            samples = flowhmc.sample(config['generate_samples']['num_samples'],
+                require_grad=False)
             save_name = config['generate_samples']['save_path'] + \
                 config['generate_samples']['save_name_base'] + \
                 '_batch_num_' + str(batch_num)
@@ -818,5 +822,10 @@ def main():
             "model_ckpt_" + save_name_base + "_final")
 
 
+
+
 if __name__ == "__main__":
     main()
+
+
+# %%
