@@ -126,6 +126,9 @@ train_ei_sksd:
   samples_per_iter: 100
   ei_lr: 1.e-2
   sksd_lr: 1.e-3
+  sksd_lr_decay_factor: 0.8
+  sksd_lr_decay_steps: 1
   save_interval: 50
-  save_path: 'saved_data/2407_eisksd_train/' 
+  save_path: 'saved_data/temp/' 
+  continue_iter: null
 

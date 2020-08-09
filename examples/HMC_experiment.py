@@ -758,6 +758,14 @@ def main():
         scale_optimizer = torch.optim.Adam(
             [flowhmc.flows[flowhmc.end_init_flow_idx-1].scale],
             lr=config['train_ei_sksd']['sksd_lr'])
+        if config['train_ei_sksd']['sksd_lr_decay_factor'] is not None:
+            do_decay = True
+            decay_schedule = torch.optim.lr_scheduler.ExponentialLR(
+                scale_optimizer,
+                config['train_ei_sksd']['sksd_lr_decay_factor'])
+            decay_steps = config['train_ei_sksd']['sksd_lr_decay_steps']
+        else:
+            do_decay = False
         ei_losses = np.array([])
         sksd_losses = np.array([])
         scales = np.array([])
@@ -802,6 +810,9 @@ def main():
             scales = np.append(scales,
                 flowhmc.flows[flowhmc.end_init_flow_idx-1].scale.detach().numpy())
 
+            if do_decay:
+                if iter%decay_steps == 0:
+                    decay_schedule.step()
 
             if iter%config['train_ei_sksd']['save_interval'] == 0:
                 data = np.zeros((iter+1, 3))
