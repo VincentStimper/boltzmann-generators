@@ -59,17 +59,17 @@ class AddNoise(nf.flows.Flow):
     """
     Adds a small amount of Gaussian noise
     """
-    def __init__(self, std):
+    def __init__(self, log_std):
         """
         Constructor
-        :param std: The standard deviation of the noise
+        :param log_std: The log standard deviation of the noise
         """
         super().__init__()
-        self.register_buffer('noise_std', std)
+        self.register_parameter('log_std', torch.nn.Parameter(log_std))
 
     def forward(self, z):
         eps = torch.randn_like(z)
-        z_ = z + self.noise_std * eps
+        z_ = z + torch.exp(self.log_std) * eps
         logdet = torch.zeros(z_.shape[0])
         return z_, logdet
 

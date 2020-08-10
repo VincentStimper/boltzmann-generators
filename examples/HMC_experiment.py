@@ -192,7 +192,7 @@ def main():
                 print("adding Gaussian noise layer, using noise std:",
                     config['initial_dist_model']['noise_std'])
                 raw_flows += [bg.flows.AddNoise(
-                    torch.tensor(config['initial_dist_model']['noise_std']))]
+                    torch.tensor(math.log(config['initial_dist_model']['noise_std'])))]
 
             self.end_init_flow_idx = len(raw_flows)
 
@@ -755,9 +755,22 @@ def main():
         print("Training with EI and SKSD")
         hmc_optimizer = torch.optim.Adam(flowhmc.get_hmc_parameters(),
             lr=config['train_ei_sksd']['ei_lr'])
-        scale_optimizer = torch.optim.Adam(
-            [flowhmc.flows[flowhmc.end_init_flow_idx-1].scale],
-            lr=config['train_ei_sksd']['sksd_lr'])
+
+        if config['initial_dist_model']['scaling'] is not None:
+            scale_optimizer = torch.optim.Adam(
+                [flowhmc.flows[flowhmc.end_init_flow_idx-1].scale],
+                lr=config['train_ei_sksd']['sksd_lr']
+            )
+        elif config['initial_dist_model']['noise_std'] is not None:
+            scale_optimizer = torch.optim.Adam(
+                [flowhmc.flows[flowhmc.end_init_flow_idx-1].log_std],
+                lr=config['train_ei_sksd']['sksd_lr']
+            )
+        else:
+            raise ValueError("""Training with EI and SKSD requires either the 
+                                scaling or noise_std config parameter to be
+                                set""")
+
         if config['train_ei_sksd']['sksd_lr_decay_factor'] is not None:
             do_decay = True
             decay_schedule = torch.optim.lr_scheduler.ExponentialLR(
@@ -766,6 +779,8 @@ def main():
             decay_steps = config['train_ei_sksd']['sksd_lr_decay_steps']
         else:
             do_decay = False
+
+
         ei_losses = np.array([])
         sksd_losses = np.array([])
         scales = np.array([])
@@ -800,15 +815,20 @@ def main():
             sksd.backward()
             scale_optimizer.step()
 
+
+            if config['initial_dist_model']['scaling'] is not None:
+                scale = flowhmc.flows[flowhmc.end_init_flow_idx-1].scale
+            elif config['initial_dist_model']['noise_std'] is not None:
+                scale = torch.exp(flowhmc.flows[flowhmc.end_init_flow_idx-1].log_std)
+
             print("{:4}".format(iter),
                 "{:10.4f}".format(ei_loss),
                 "{:10.4f}".format(sksd),
-                "{:10.4f}".format(flowhmc.flows[flowhmc.end_init_flow_idx-1].scale))
+                "{:10.4f}".format(scale))
 
             ei_losses = np.append(ei_losses, ei_loss.detach().numpy())
             sksd_losses = np.append(sksd_losses, sksd.detach().numpy())
-            scales = np.append(scales,
-                flowhmc.flows[flowhmc.end_init_flow_idx-1].scale.detach().numpy())
+            scales = np.append(scales, scale.detach().numpy())
 
             if do_decay:
                 if iter%decay_steps == 0:
