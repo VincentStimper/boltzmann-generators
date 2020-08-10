@@ -1,0 +1,134 @@
+# Config file for specifying HMC based experiments and models
+
+system:
+
+  name: AlanineDipeptideVacuum
+  temperature: 1000
+  energy_cut: 1.e+5
+  energy_max: 1.e+20
+  platform: Reference
+  precision: double
+  parallel_energy: True
+  n_threads: 4
+  training_data_path: 'saved_data/aldp_vacuum_without_const.h5' # will create if it doesn't exist
+
+initial_dist_model:
+  latent_size: 60
+  actnorm: True
+  rnvp:
+    blocks: 5
+    hidden_layers: 3
+    hidden_units: 128
+    output_fn: null
+    output_scale: 3
+    init_zeros: False
+  
+  # model path, optional. If given, will load the initial part of the model from
+  # this location
+  load_model_path: "path/to/alpha_2_model"
+  final_flow_idx_for_loaded_model: 15 #For loading the coord transform params
+  device: cpu
+  scaling: 1.0 # if not null then will apply this scaling to rnvp
+  noise_std: null # if not null then will add gaussian noise with this std to the output of the initial distribution
+
+hmc:
+  chain_length: 50
+  leapfrog_steps: 10
+  starting_step_size: 0.01 # initial step size used in all layers and dims
+  starting_log_mass: 0.0 # initial log mass used in all layers and dims
+
+full_model_path:  null
+
+ei_training:
+  do_training: False
+  iters: 10000
+  samples_per_iter: 256
+  save_path: 'saved_data/2306eitraining/'
+  lr: 1.e-2
+  save_interval: 50
+
+hmc_grid_search:
+  do_grid_search: False
+  log_step_size_min: -12
+  log_step_size_max: 0
+  log_mass_min: -8
+  log_mass_max: 3
+  fidelity: 4 # side length of grid. total number of points=fidelity^2
+  save_path: 'saved_data/1606gridsearch/'
+  num_samples: 10000
+  include_cl_arg_in_save_name: False
+
+hmc_grid_search_ksd_calc:
+  do_ksd_calc: False
+  sample_dict_path: 'saved_data/2206gridsearch.npy'
+  ksd_save_path: 'saved_data/2206gridKSDs.npy'
+
+hmc_grid_search_choose_best_hpams:
+  do_choice: False
+  ksd_dict_path: 'saved_data/2206gridKSDs.npy'
+
+general_calc_KSD: # Just calculate the KSD for given samples
+  do_general_calc: False
+  samples_path: 'saved_data/1807_3stdgaussianMegaSamples.npy'
+  save_path: null
+  h_square_val: null # If given, use this for KSD calculations
+  samples_to_estimate_median: 10000 # If no h_square_val given, then use this number of samples to estimate h_square
+  use_block: True # whether to use the block KSD function (used for large samples sizes)
+  num_processes: 4 # If use_block==True and this is not none then the parallel calculation is performed
+  num_blocks: 10 # if using block, how many blocks to use
+  sub_samples: 10 # if given, split the given samples up and generate a KSD value for each block of subsamples
+
+generate_samples: # Just generate samples and save them
+  do_generation: False
+  save_path: 'saved_data/temp/' # where to save the samples. Needs to include final forward slash
+  save_name_base: 'EI_samples' # the start of the file name
+  num_samples: 10 # how many samples to generate in each batch
+  num_repeats: 1 # how many batches to save
+  include_cl_arg_in_save_name: True # whether to include the process id cl arg in the saved file name
+
+
+# Estimate the KL divergence between samples and the training data.
+# The KL is computed for each marginal and then grouped
+estimate_kl:
+  do_estimation: False
+  KL_direction: 'forward' # If forward then it is KL(training_data || samples)
+                          # If reverse then it is KL(samples || training_data)
+  samples_file: 'saved_data/2706eisamples.npy'
+  num_samples: 100000 # If given, only take this number of samples from the sample file
+  save_name: 'saved_data/0207KLcalcs/EI_KLs.txt'
+
+# Compute the KL divergence for samples from a grid of different parameter values
+grid_search_kl_calc:
+  do_kl_calc: False
+  sample_dict_path: 'saved_data/2206gridsearch.npy'
+  KL_direction: 'forward' # forward = KL(training_data || samples) #reverse = KL(samples||training_data)
+  kls_save_path: 'saved_data/0307gridKLcalc/gridKLs_forwardmean.npy'
+
+# Evaluate the log target at samples
+eval_log_target:
+  do_eval: False
+  samples: 'saved_data/1207_10percentnoise_EIMegaSamples.npy'
+  num_split: 10
+  save_path: 'saved_data/1707_logtargets/10_percent_noise.txt'
+
+estimate_sksd:
+  do_estimation: False
+  samples: 'saved_data/1607_1_50scale_EIMegaSamples.npy'
+  num_median: 1000
+  num_samples_in_batch: 10000
+  num_blocks: 10
+  num_batches: 10
+  save_name: 'saved_data/2507_sksds/1_00.txt'
+
+train_ei_sksd:
+  do_train: True
+  iters: 1000
+  samples_per_iter: 256
+  ei_lr: 1.e-2
+  sksd_lr: 5.e-3
+  sksd_lr_decay_factor: 0.8
+  sksd_lr_decay_steps: 100
+  save_interval: 100
+  save_path: 'path/to/train/save/location'
+  continue_iter: null
+
