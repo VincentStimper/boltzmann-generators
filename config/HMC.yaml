@@ -130,5 +130,6 @@ train_ei_sksd:
   sksd_lr_decay_steps: 1
   save_interval: 50
   save_path: 'saved_data/temp/' 
-  continue_iter: null
+  resume: True
+  time_limit: 15
 

@@ -31,6 +31,8 @@ import argparse
 
 from tqdm import tqdm
 
+from time import time
+
 def main():
 
     parser = argparse.ArgumentParser(description="Run experiments/generate samples from HMC chains")
@@ -771,29 +773,53 @@ def main():
                                 scaling or noise_std config parameter to be
                                 set""")
 
+        ei_losses = np.array([])
+        sksd_losses = np.array([])
+        scales = np.array([])
+
+        save_name_base = "hmc_ei_sksd"
+
+        if config['train_ei_sksd']['resume']:
+            latest_cp = bg.utils.get_latest_checkpoint(config['train_ei_sksd']['save_path'], 'model')
+            if latest_cp is not None:
+                start_iter = int(latest_cp[-8:-3])
+                flowhmc.load_state_dict(torch.load(latest_cp))
+                hmc_optimizer_path = config['train_ei_sksd']['save_path'] + \
+                                     "hmc_optimizer_" + save_name_base + ".pt"
+                if os.path.exists(hmc_optimizer_path):
+                    hmc_optimizer.load_state_dict(torch.load(hmc_optimizer_path))
+                scale_optimizer_path = config['train_ei_sksd']['save_path'] + \
+                                       "scale_optimizer_" + save_name_base + ".pt"
+                if os.path.exists(scale_optimizer_path):
+                    scale_optimizer.load_state_dict(torch.load(scale_optimizer_path))
+                trainprog_path = config['train_ei_sksd']['save_path'] + "trainprog_" + \
+                                 save_name_base + "_ckpt_%05i.txt" % start_iter
+                if os.path.exists(trainprog_path):
+                    data = np.loadtxt(trainprog_path)
+                    ei_losses = data[:, 0]
+                    sksd_losses = data[:, 1]
+                    scales = data[:, 2]
+            else:
+                start_iter = 0
+        else:
+            start_iter = 0
+
         if config['train_ei_sksd']['sksd_lr_decay_factor'] is not None:
             do_decay = True
             decay_schedule = torch.optim.lr_scheduler.ExponentialLR(
                 scale_optimizer,
                 config['train_ei_sksd']['sksd_lr_decay_factor'])
             decay_steps = config['train_ei_sksd']['sksd_lr_decay_steps']
+            if start_iter > 0:
+                for _ in range(start_iter // decay_steps):
+                    decay_schedule.step()
         else:
             do_decay = False
 
-
-        ei_losses = np.array([])
-        sksd_losses = np.array([])
-        scales = np.array([])
-
-        save_name_base = "hmc_ei_sksd_"
-
-        if config['train_ei_sksd']['continue_iter'] is not None:
-            continue_iter = config['train_ei_sksd']['continue_iter']
-        else:
-            continue_iter = 0
+        start_time = time()
 
         print("Iter    EI loss     SKSD      scale")
-        for iter in range(config['train_ei_sksd']['iters']):
+        for iter in range(start_iter, config['train_ei_sksd']['iters']):
             hmc_optimizer.zero_grad()
 
             x, _ = flowhmc.rnvp_initial_dist.forward(
@@ -834,23 +860,23 @@ def main():
                 if iter%decay_steps == 0:
                     decay_schedule.step()
 
-            if iter%config['train_ei_sksd']['save_interval'] == 0:
-                data = np.zeros((iter+1, 3))
+            if (iter + 1) % config['train_ei_sksd']['save_interval'] == 0:
+                data = np.zeros((iter, 3))
                 data[:,0] = ei_losses
                 data[:,1] = sksd_losses
                 data[:,2] = scales
                 np.savetxt(config['train_ei_sksd']['save_path'] + "trainprog_" + \
-                    save_name_base + "_ckpt_{}".format(continue_iter + iter), data)
+                    save_name_base + "_ckpt_%05i.txt" % (iter + 1), data)
                 torch.save(flowhmc.state_dict(), config['train_ei_sksd']['save_path'] + \
-                    "model_ckpt_" + save_name_base + "_iter_{}".format(continue_iter + iter))
-        data = np.zeros((config['train_ei_sksd']['iters'], 3))
-        data[:,0] = ei_losses
-        data[:,1] = sksd_losses
-        data[:,2] = scales
-        np.savetxt(config['train_ei_sksd']['save_path'] + "trainprog_" + \
-            save_name_base + "_final", data)
-        torch.save(flowhmc.state_dict(), config['train_ei_sksd']['save_path'] + \
-            "model_ckpt_" + save_name_base + "_final")
+                    "model_ckpt_" + save_name_base + "_iter_%05i.pt" % (iter + 1))
+                torch.save(hmc_optimizer.state_dict(), config['train_ei_sksd']['save_path'] + \
+                           "hmc_optimizer_" + save_name_base + ".pt")
+                torch.save(scale_optimizer.state_dict(), config['train_ei_sksd']['save_path'] + \
+                           "scale_optimizer_" + save_name_base + ".pt")
+
+                if 'time_limit' in config['train_ei_sksd'] \
+                        and (time() - start_time) / 3600 > config['train_ei_sksd']['time_limit']:
+                    break
 
 
 
