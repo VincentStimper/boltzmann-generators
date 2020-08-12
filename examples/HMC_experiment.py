@@ -861,10 +861,7 @@ def main():
                     decay_schedule.step()
 
             if (iter + 1) % config['train_ei_sksd']['save_interval'] == 0:
-                data = np.zeros((iter, 3))
-                data[:,0] = ei_losses
-                data[:,1] = sksd_losses
-                data[:,2] = scales
+                data = np.column_stack((ei_losses, sksd_losses, scales))
                 np.savetxt(config['train_ei_sksd']['save_path'] + "trainprog_" + \
                     save_name_base + "_ckpt_%05i.txt" % (iter + 1), data)
                 torch.save(flowhmc.state_dict(), config['train_ei_sksd']['save_path'] + \
