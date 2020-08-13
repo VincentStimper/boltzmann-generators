@@ -131,7 +131,8 @@ class BoltzmannGenerator(nf.NormalizingFlow):
         # Set up base distribution
         latent_size = config['model']['latent_size']
         if 'base' in config['model'] and config['model']['base'] == 'resampled':
-            a = nf.nets.MLP([latent_size] + hidden_layers * [hidden_units] + [1], output_fn="sigmoid", leaky=0.01)
+            a = nf.nets.MLP([latent_size] + hidden_layers * [hidden_units] + [1],
+                            output_fn="sigmoid", leaky=0.01)
             q0 = nf.distributions.ResampledGaussian(latent_size, a, 10, 0.01, trainable=False)
         else:
             q0 = nf.distributions.DiagGaussian(latent_size, trainable=False)
