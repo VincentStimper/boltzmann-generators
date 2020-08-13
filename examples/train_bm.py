@@ -71,7 +71,7 @@ if args.resume:
         loss_path = os.path.join(checkpoint_root, 'log/loss.csv')
         if os.path.exists(loss_path):
             loss_hist = np.loadtxt(loss_path)
-        start_iter = int(latest_cp[-8:-3])
+        start_iter = int(latest_cp[-10:-3])
 if start_iter > 0:
     for _ in range(start_iter // config['train']['decay_iter']):
         lr_scheduler.step()
@@ -94,7 +94,7 @@ for it in range(start_iter, max_iter):
     loss_hist = np.append(loss_hist, loss.to('cpu').data.numpy())
     
     if (it + 1) % checkpoint_step == 0:
-        model.save(os.path.join(checkpoint_root, 'checkpoints/model_%05i.pt' % (it + 1)))
+        model.save(os.path.join(checkpoint_root, 'checkpoints/model_%07i.pt' % (it + 1)))
         torch.save(optimizer.state_dict(),
                    os.path.join(checkpoint_root, 'checkpoints/optimizer.pt'))
         np.savetxt(os.path.join(checkpoint_root, 'log/loss.csv'), loss_hist)
