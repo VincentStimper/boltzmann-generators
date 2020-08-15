@@ -76,6 +76,11 @@ if start_iter > 0:
     for _ in range(start_iter // config['train']['decay_iter']):
         lr_scheduler.step()
 
+if 'loss_limit' in config['train']:
+    loss_limit = config['train']['loss_limit']
+else:
+    loss_limit = 1e100
+
 start_time = time()
 
 for it in range(start_iter, max_iter):
@@ -87,7 +92,7 @@ for it in range(start_iter, max_iter):
         loss = fkld + torch.mean(model.flows[-1].mixed_transform.ic_transform.angle_loss)
     else:
         loss = fkld
-    if not torch.isnan(loss) and loss < 0:
+    if not torch.isnan(loss) and loss < loss_limit:
         loss.backward()
         optimizer.step()
     
