@@ -35,24 +35,26 @@ class Scaling(nf.flows.Flow):
     """
     Applys a scaling factor
     """
-    def __init__(self, mean, scale):
+    def __init__(self, mean, log_scale):
         """
         Constructor
         :param means: The mean of the previous layer
-        :param scale: scale factor to apply
+        :param log_scale: The log of the scale factor to apply
         """
         super().__init__()
         self.register_buffer('mean', mean)
-        self.register_parameter('scale', torch.nn.Parameter(scale))
+        self.register_parameter('log_scale', torch.nn.Parameter(log_scale))
 
     def forward(self, z):
-        z_ = (z-self.mean) * self.scale + self.mean
-        logdet = torch.log(self.scale) * self.mean.shape[0]
+        scale = torch.exp(self.log_scale)
+        z_ = (z-self.mean) * scale + self.mean
+        logdet = torch.log(scale) * self.mean.shape[0]
         return z_, logdet
 
     def inverse(self, z):
-        z_ = (z-self.mean) / self.scale + self.mean
-        logdet = -torch.log(self.scale) * self.mean.shape[0]
+        scale = torch.exp(self.log_scale)
+        z_ = (z-self.mean) / scale + self.mean
+        logdet = -torch.log(scale) * self.mean.shape[0]
         return z_, logdet
 
 class AddNoise(nf.flows.Flow):

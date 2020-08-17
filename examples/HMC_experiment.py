@@ -186,7 +186,7 @@ def main():
                     for i in range(len(raw_flows)):
                         x, _ = raw_flows[i].forward(x)
                     raw_flows += [bg.flows.Scaling(torch.mean(x, 0),
-                        torch.tensor(config['initial_dist_model']['scaling']))]
+                        torch.log(torch.tensor(config['initial_dist_model']['scaling'])))]
 
             if config['initial_dist_model']['noise_std'] is not None:
                 print("adding Gaussian noise layer, using noise std:",
@@ -758,7 +758,7 @@ def main():
 
         if config['initial_dist_model']['scaling'] is not None:
             scale_optimizer = torch.optim.Adam(
-                [flowhmc.flows[flowhmc.end_init_flow_idx-1].scale],
+                [flowhmc.flows[flowhmc.end_init_flow_idx-1].log_scale],
                 lr=config['train_ei_sksd']['sksd_lr']
             )
         elif config['initial_dist_model']['noise_std'] is not None:
@@ -817,7 +817,7 @@ def main():
 
 
             if config['initial_dist_model']['scaling'] is not None:
-                scale = flowhmc.flows[flowhmc.end_init_flow_idx-1].scale
+                scale = torch.exp(flowhmc.flows[flowhmc.end_init_flow_idx-1].log_scale)
             elif config['initial_dist_model']['noise_std'] is not None:
                 scale = torch.exp(flowhmc.flows[flowhmc.end_init_flow_idx-1].log_std)
 
