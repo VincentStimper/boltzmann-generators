@@ -302,8 +302,31 @@ def main():
         optimizer = torch.optim.Adam(flowhmc.get_hmc_parameters(),
             lr=config['ei_training']['lr'])
         losses = np.array([])
-        save_name_base = "hmc_length_" + str(config['hmc']['chain_length'])
-        for iter in range(config['ei_training']['iters']):
+        save_name_base = "hmc_ei"
+
+        if config['ei_training']['resume']:
+            latest_cp = bg.utils.get_latest_checkpoint(
+                config['ei_training']['save_path'], 'model')
+            if latest_cp is not None:
+                start_iter = int(latest_cp[-8:-3])
+                flowhmc.load_state_dict(torch.load(latest_cp))
+                optimizer_path = config['ei_training']['save_path'] + \
+                    "optimizer_" + save_name_base + ".pt"
+                if os.path.exists(optimizer_path):
+                    optimizer.load_state_dict(torch.load(optimizer_path))
+                trainprog_path = config['ei_training']['save_path'] + 'trainprog_' + \
+                    save_name_base + "_ckpt_%05i.txt" % start_iter
+                if os.path.exists(trainprog_path):
+                    losses = np.loadtxt(trainprog_path)
+            else:
+                start_iter = 0
+        else:
+            start_iter = 0
+
+        start_time = time()
+        
+        print("Iter    Loss")
+        for iter in range(start_iter, config['ei_training']['iters']):
             optimizer.zero_grad()
             loss = -flowhmc.eval_log_target(config['ei_training']['samples_per_iter'])
             if not torch.isnan(loss):
@@ -311,16 +334,20 @@ def main():
             optimizer.step()
 
             losses = np.append(losses, loss.detach().numpy())
+            print(iter, loss.detach().numpy())
 
-            if iter%config['ei_training']['save_interval'] == 0:
+            if (iter+1)%config['ei_training']['save_interval'] == 0:
                 np.savetxt(config['ei_training']['save_path'] + "trainprog_" + \
-                    save_name_base + "_ckpt_{}".format(iter), losses)
+                    save_name_base + "_ckpt_%05i.txt"%(iter+1), losses)
                 torch.save(flowhmc.state_dict(), config['ei_training']['save_path'] + \
-                    "model_ckpt_" + save_name_base + "_iter_{}".format(iter))
-        np.savetxt(config['ei_training']['save_path'] + "trainprog_" + \
-            save_name_base + "_final", losses)
-        torch.save(flowhmc.state_dict(), config['ei_training']['save_path'] + \
-            "model_ckpt_" + save_name_base + "_final")
+                    "model_ckpt_" + save_name_base + "_iter_%05i.pt" % (iter + 1))
+                torch.save(optimizer.state_dict(), config['ei_training']['save_path'] + \
+                    "optimizer_" + save_name_base + ".pt")
+                
+                if 'time_limit' in config['ei_training'] \
+                        and (time() - start_time) / 3600 > config['ei_training']['time_limit']:
+                    break
+
 
     # Do grid search over parameters
     if config['hmc_grid_search']['do_grid_search']:
