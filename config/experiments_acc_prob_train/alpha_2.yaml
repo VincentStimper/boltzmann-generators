@@ -4,12 +4,12 @@ system:
 
   name: AlanineDipeptideVacuum
   temperature: 1000
-  energy_cut: 1.e+5 # 2
+  energy_cut: 1.e+5
   energy_max: 1.e+20
-  platform: CPU
+  platform: Reference
   precision: double
-  parallel_energy: False
-  n_threads: null
+  parallel_energy: True
+  n_threads: 4
   training_data_path: 'saved_data/aldp_vacuum_without_const.h5' # will create if it doesn't exist
 
 initial_dist_model:
@@ -25,14 +25,14 @@ initial_dist_model:
   
   # model path, optional. If given, will load the initial part of the model from
   # this location
-  load_model_path: "models/rnvp_aldp_no_const_30k.pt"
+  load_model_path: "path/to/alpha_2_model"
   final_flow_idx_for_loaded_model: 15 #For loading the coord transform params
   device: cpu
-  scaling: 1.0 # if not null then will apply this scaling to rnvp
+  scaling: null # if not null then will apply this scaling to rnvp
   noise_std: null # if not null then will add gaussian noise with this std to the output of the initial distribution
 
 hmc:
-  chain_length: 30 #30
+  chain_length: 50
   leapfrog_steps: 10
   starting_step_size: 0.01 # initial step size used in all layers and dims
   starting_log_mass: 0.0 # initial log mass used in all layers and dims
@@ -41,9 +41,9 @@ full_model_path:  null
 
 ei_training:
   do_training: False
-  iters: 10000
+  iters: 1000
   samples_per_iter: 256
-  save_path: 'saved_data/2306eitraining/'
+  save_path: 'path/to/train/save/location/'
   lr: 1.e-2
   save_interval: 50
   resume: False
@@ -125,22 +125,22 @@ estimate_sksd:
 train_ei_sksd:
   do_train: False
   iters: 1000
-  samples_per_iter: 100
+  samples_per_iter: 256
   ei_lr: 1.e-2
-  sksd_lr: 1.e-3
+  sksd_lr: 5.e-3
   sksd_lr_decay_factor: 0.8
-  sksd_lr_decay_steps: 1
-  save_interval: 50
-  save_path: 'saved_data/temp/' 
-  resume: True
-  time_limit: 15
+  sksd_lr_decay_steps: 100
+  save_interval: 100
+  save_path: 'path/to/train/save/location'
+  continue_iter: null
 
 train_acc_prob:
   do_train: True
-  learning_rate_decay: 0.6 # must be (0.5, 1]
+  learning_rate_decay: 0.6
   learning_rate: 2.0
   target_acc_prob: 0.65
-  iterations: 100
-  batch_num: 10
-  save_interval: 5
-  save_path: 'saved_data/temp/'
+  iterations: 50
+  batch_num: 100
+  save_interval: 10
+  save_path: 'path/to/save/'
+

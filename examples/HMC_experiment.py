@@ -902,6 +902,62 @@ def main():
                         and (time() - start_time) / 3600 > config['train_ei_sksd']['time_limit']:
                     break
 
+    if config['train_acc_prob']['do_train']:
+        print("Training acceptance probability")
+        old_log_step_size = math.log(config['hmc']['starting_step_size'])
+        kappa = config['train_acc_prob']['learning_rate_decay']
+        lr = config['train_acc_prob']['learning_rate']
+        target_acc_prob = config['train_acc_prob']['target_acc_prob']
+        batch_num = config['train_acc_prob']['batch_num']
+
+        print("Iteration  log_step_size   mean_acc_prob   a_n")
+
+        save_data_log_step_sizes = np.array([])
+        save_data_acc_probs = np.array([])
+
+        for i in range(1, config['train_acc_prob']['iterations']):
+
+            total_acc_probs = torch.zeros((config['hmc']['chain_length'], batch_num))
+            x, _ = flowhmc.rnvp_initial_dist.forward(batch_num)
+            for j, flow in enumerate(flowhmc.flows):
+                if j >= flowhmc.end_init_flow_idx and j < len(flowhmc.flows)-1:
+                    x, _, acc_probs = flow.forward(x, True)
+                    total_acc_probs[j - flowhmc.end_init_flow_idx, :] = acc_probs
+                else:
+                    x, _ = flow.forward(x)
+
+            mean_acc_prob = torch.mean(total_acc_probs).item()
+
+            a_n = lr * i**(-kappa)
+
+            new_log_step_size = old_log_step_size - a_n * (target_acc_prob - mean_acc_prob)
+
+            save_data_log_step_sizes = np.append(save_data_log_step_sizes,
+                old_log_step_size)
+            save_data_acc_probs = np.append(save_data_acc_probs,
+                mean_acc_prob)
+
+            print("{:4}".format(i),
+                "{:10.4f}".format(new_log_step_size),
+                "{:10.4f}".format(mean_acc_prob),
+                "{:10.4f}".format(a_n))
+
+            for j in range(flowhmc.end_init_flow_idx, len(flowhmc.flows)-1):
+                flowhmc.flows[j].log_step_size = \
+                    torch.nn.Parameter(new_log_step_size * \
+                    torch.ones((config['initial_dist_model']['latent_size'])))
+
+            old_log_step_size = new_log_step_size
+
+            if (i+1) % config['train_acc_prob']['save_interval'] == 0:
+                data = np.column_stack((save_data_log_step_sizes, save_data_acc_probs))
+                save_name_base = 'train_acc_prob'
+                np.savetxt(config['train_acc_prob']['save_path'] + "trainprog_" + \
+                    save_name_base + "_ckpt_%05i.txt" % (i + 1), data)
+                torch.save(flowhmc.state_dict(), config['train_acc_prob']['save_path'] + \
+                    "model_ckpt_" + save_name_base + "_iter_%05i.pt" % (i + 1))
+
+
 
 
 
