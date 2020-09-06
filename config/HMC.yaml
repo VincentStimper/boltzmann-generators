@@ -11,6 +11,7 @@ system:
   parallel_energy: False
   n_threads: null
   training_data_path: 'saved_data/aldp_vacuum_without_const.h5' # will create if it doesn't exist
+  seed: 123
 
 initial_dist_model:
   latent_size: 60
@@ -28,11 +29,11 @@ initial_dist_model:
   load_model_path: "models/rnvp_aldp_no_const_30k.pt"
   final_flow_idx_for_loaded_model: 15 #For loading the coord transform params
   device: cpu
-  scaling: 1.0 # if not null then will apply this scaling to rnvp
+  scaling: null # if not null then will apply this scaling to rnvp
   noise_std: null # if not null then will add gaussian noise with this std to the output of the initial distribution
 
 hmc:
-  chain_length: 30 #30
+  chain_length: 50 #30
   leapfrog_steps: 10
   starting_step_size: 0.01 # initial step size used in all layers and dims
   starting_log_mass: 0.0 # initial log mass used in all layers and dims
@@ -56,8 +57,8 @@ hmc_grid_search:
   log_mass_min: -8
   log_mass_max: 3
   fidelity: 4 # side length of grid. total number of points=fidelity^2
-  save_path: 'saved_data/1606gridsearch/'
-  num_samples: 10000
+  save_path: 'saved_data/temp/'
+  num_samples: 10
   include_cl_arg_in_save_name: False
 
 hmc_grid_search_ksd_calc:
@@ -83,10 +84,10 @@ general_calc_KSD: # Just calculate the KSD for given samples
 generate_samples: # Just generate samples and save them
   do_generation: False
   save_path: 'saved_data/temp/' # where to save the samples. Needs to include final forward slash
-  save_name_base: 'EI_samples' # the start of the file name
-  num_samples: 10 # how many samples to generate in each batch
-  num_repeats: 1 # how many batches to save
-  include_cl_arg_in_save_name: True # whether to include the process id cl arg in the saved file name
+  save_name_base: 'alpha_1_train_acc_prob_samples' # the start of the file name
+  num_samples: 10000 # how many samples to generate in each batch
+  num_repeats: 10 # how many batches to save
+  include_cl_arg_in_save_name: False # whether to include the process id cl arg in the saved file name
 
 
 # Estimate the KL divergence between samples and the training data.
@@ -95,9 +96,9 @@ estimate_kl:
   do_estimation: False
   KL_direction: 'forward' # If forward then it is KL(training_data || samples)
                           # If reverse then it is KL(samples || training_data)
-  samples_file: 'saved_data/2706eisamples.npy'
-  num_samples: 100000 # If given, only take this number of samples from the sample file
-  save_name: 'saved_data/0207KLcalcs/EI_KLs.txt'
+  samples_file: 'saved_data/3008_grid_search/md_optimal_samples.npy'
+  num_samples: null # If given, only take this number of samples from the sample file
+  save_name: 'saved_data/3008_grid_search/md_optimal_kls.txt'
 
 # Compute the KL divergence for samples from a grid of different parameter values
 grid_search_kl_calc:
@@ -136,7 +137,7 @@ train_ei_sksd:
   time_limit: 15
 
 train_acc_prob:
-  do_train: True
+  do_train: False
   learning_rate_decay: 0.6 # must be (0.5, 1]
   learning_rate: 2.0
   target_acc_prob: 0.65

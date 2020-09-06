@@ -109,6 +109,9 @@ def main():
             if not os.path.exists(config['system']['training_data_path']):
                 print("generating training data as file ",
                     config['system']['training_data_path'], " does not exist")
+                if 'seed' in config['system']:
+                    print("seeding integrator with", config['system']['seed'])
+                    sim.integrator.setRandomNumberSeed(config['system']['seed'])
                 sim.context.setPositions(system.positions)
                 sim.minimizeEnergy()
                 sim.reporters.append(mdtraj.reporters.HDF5Reporter(
@@ -362,6 +365,7 @@ def main():
 
             for log_mass in np.linspace(log_mass_range[0], log_mass_range[1],
                 num=config['hmc_grid_search']['fidelity']):
+                print("setting to ", log_step_size, log_mass)
 
                 # set the step size and log_mass
                 state_dict = flowhmc.state_dict()
@@ -381,7 +385,7 @@ def main():
                     'grid_hmc_samples_log_step_size_{:.3f}'.format(log_step_size) + \
                     '_log_mass_{:.3f}'.format(log_mass)
                 if config['hmc_grid_search']['include_cl_arg_in_save_name']:
-                    suffix = args.processID
+                    suffix = str(args.processID)
                     save_name += '_id_' + suffix
                 np.save(save_name, samples.detach().numpy())
 
@@ -963,6 +967,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-# %%
