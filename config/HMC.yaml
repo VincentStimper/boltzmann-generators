@@ -93,12 +93,13 @@ generate_samples: # Just generate samples and save them
 # Estimate the KL divergence between samples and the training data.
 # The KL is computed for each marginal and then grouped
 estimate_kl:
-  do_estimation: False
+  do_estimation: True
   KL_direction: 'forward' # If forward then it is KL(training_data || samples)
                           # If reverse then it is KL(samples || training_data)
   samples_file: 'saved_data/3008_grid_search/md_optimal_samples.npy'
-  num_samples: null # If given, only take this number of samples from the sample file
-  save_name: 'saved_data/3008_grid_search/md_optimal_kls.txt'
+  num_samples: 1000 # If given, only take this number of samples from the sample file
+  save_name: 'saved_data/temp/test_kls.txt'
+  samples_file_2: 'saved_data/0609_md_full1e6_seed_123/aldp_data.npy' # If given will use these samples instead of the training data
 
 # Compute the KL divergence for samples from a grid of different parameter values
 grid_search_kl_calc:

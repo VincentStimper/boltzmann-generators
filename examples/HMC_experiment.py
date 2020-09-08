@@ -573,23 +573,38 @@ def main():
     if config['estimate_kl']['do_estimation']:
         print("Estimating KL divergence")
         print("Loading samples file: ", config['estimate_kl']['samples_file'])
-        samples = np.load(config['estimate_kl']['samples_file'])
+        samples = np.load(config['estimate_kl']['samples_file']).astype('float64')
+        if 'samples_file_2' in config['estimate_kl']:
+            print("Loading second samples file: ", config['estimate_kl']['samples_file_2'])
+            samples_2 = np.load(config['estimate_kl']['samples_file_2']).astype('float64')
 
         if config['estimate_kl']['num_samples'] is not None:
             samples = samples[0:config['estimate_kl']['num_samples'], :]
+            if 'samples_file_2' in config['estimate_kl']:
+                samples_2 = samples_2[0:config['estimate_kl']['num_samples'], :]
 
         # convert to internal coords
         pyt_samples = torch.from_numpy(samples)
         ic_samples, _ = flowhmc.flows[-1].inverse(pyt_samples)
         samples = ic_samples.detach().numpy()
 
-        ic_training_data, _ = flowhmc.flows[-1].inverse(flowhmc.training_data)
-        ic_training_data = ic_training_data.detach().numpy()
+        if 'samples_file_2' in config['estimate_kl']:
+            base_samples = torch.from_numpy(samples_2)
+        else:
+            base_samples = flowhmc.training_data
+
+        ic_base_samples, _ = flowhmc.flows[-1].inverse(base_samples)
+        ic_base_samples = ic_base_samples.detach().numpy()
 
         # remove any nans
         num_samples = samples.shape[0]
         samples = samples[~np.isnan(samples).any(axis=1)]
         num_nans = num_samples - samples.shape[0]
+        print("removed", num_nans, " nan values.", num_nans/num_samples,
+            "proportion of total samples")
+        num_samples = ic_base_samples.shape[0]
+        ic_base_samples = ic_base_samples[~np.isnan(ic_base_samples).any(axis=1)]
+        num_nans = num_samples - ic_base_samples.shape[0]
         print("removed", num_nans, " nan values.", num_nans/num_samples,
             "proportion of total samples")
 
@@ -598,7 +613,10 @@ def main():
         angle_indices = [3*x+10 for x in range(17)]
         dihedral_indices = [3*x+11 for x in range(17)]
 
-        rangeminmax = 7
+        if 'rangeminmax' in config['estimate_kl']:
+            rangeminmax = config['estimate_kl']['rangeminmax']
+        else:
+            rangeminmax = 11
 
         def kl(samples, training_data):
             if config['estimate_kl']['KL_direction'] == 'forward':
@@ -614,7 +632,7 @@ def main():
         kls = []
         print("Computing KLs")
         for i in tqdm(range(60)):
-            kls.append(kl(samples[:, i], ic_training_data[:, i]))
+            kls.append(kl(samples[:, i], ic_base_samples[:, i]))
         kls = np.array(kls)
 
         print("Saving KLs at", config['estimate_kl']['save_name'])
