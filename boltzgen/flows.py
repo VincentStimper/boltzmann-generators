@@ -8,6 +8,9 @@ class CoordinateTransform(nf.flows.Flow):
     Coordinate transform for Boltzmann generators, see
     https://science.sciencemag.org/content/365/6457/eaaw1147
 
+    The code of this function was taken from
+    https://github.com/maccallumlab/BoltzmannGenerator
+
     Meaning of forward and backward pass are switched to meet
     convention of normflow package
     """
