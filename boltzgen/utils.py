@@ -15,7 +15,7 @@ import multiprocessing as mp
 Compute the KSD divergence using samples, adapted from the theano code
 """
 # From https://github.com/YingzhenLi/SteinGrad/blob/master/hamiltonian/ksd.py
-def KSD(z, Sqx, in_h_square=None):
+def KSD(z, Sqx, in_h_square=None, U_statistic=True):
 
     # compute the rbf kernel
     K, dimZ = z.shape
@@ -40,10 +40,13 @@ def KSD(z, Sqx, in_h_square=None):
     M = (np.dot(Sqx, Sqx.T) + Sqxdy + dxSqy + dxdy) * Kxy
 
     # the following for U-statistic
-    M2 = M - np.diag(np.diag(M))
-    return np.sum(M2) / (K * (K - 1))
-
-def blockKSD(z, Sqx, num_blocks, h_square):
+    if U_statistic:
+        M2 = M - np.diag(np.diag(M))
+        return np.sum(M2) / (K * (K - 1))
+    else:
+        return np.sum(M) / (K**2)
+    
+def blockKSD(z, Sqx, num_blocks, h_square, U_statistic=True):
     K, dimZ = z.shape
     block_step = math.floor(K/num_blocks)
     culm_sum = 0
@@ -66,10 +69,13 @@ def blockKSD(z, Sqx, num_blocks, h_square):
 
             M = (np.dot(Sqxrow, Sqxcol.T) + Sqxdy + dxSqy + dxdy) * Kxy
 
-            if i == j:
+            if i == j and U_statistic:
                 M = M - np.diag(np.diag(M))
             culm_sum += np.sum(M)
-    return culm_sum / (K*(K-1))
+    if U_statistic:
+        return culm_sum / (K*(K-1))
+    else:
+        return culm_sum / (K**2)
 
 def blockKSDparallel(z, Sqx, num_blocks, h_square, num_processes):
     K, dimZ = z.shape
