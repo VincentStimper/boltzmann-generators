@@ -1,3 +1,10 @@
+# Project specific files
+models/
+notgit/
+saved_data/
+.vscode/
+
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

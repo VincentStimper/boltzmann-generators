@@ -26,25 +26,25 @@ initial_dist_model:
   
   # model path, optional. If given, will load the initial part of the model from
   # this location
-  load_model_path: "models/rnvp_aldp_no_const_30k.pt"
+  load_model_path: "models/rnvp_aldp_no_const_30k.pt" # "models/2908_experiments/ml_with_md_initial_dist.pt" #
   final_flow_idx_for_loaded_model: 15 #For loading the coord transform params
   device: cpu
-  scaling: null # if not null then will apply this scaling to rnvp
+  scaling: 1.0 # if not null then will apply this scaling to rnvp
   noise_std: null # if not null then will add gaussian noise with this std to the output of the initial distribution
 
 hmc:
   chain_length: 50 #30
   leapfrog_steps: 10
-  starting_step_size: 0.01 # initial step size used in all layers and dims
+  starting_step_size: 0.01 #0.01 initial step size used in all layers and dims
   starting_log_mass: 0.0 # initial log mass used in all layers and dims
 
-full_model_path:  null
+full_model_path: null # 'saved_data/2908_train_acc_prob/[OLD]alpha_0/model_ckpt_train_acc_prob_iter_00050.pt'
 
 ei_training:
   do_training: False
-  iters: 10000
-  samples_per_iter: 256
-  save_path: 'saved_data/2306eitraining/'
+  iters: 1000
+  samples_per_iter: 100
+  save_path: 'saved_data/temp/'
   lr: 1.e-2
   save_interval: 50
   resume: False
@@ -93,13 +93,14 @@ generate_samples: # Just generate samples and save them
 # Estimate the KL divergence between samples and the training data.
 # The KL is computed for each marginal and then grouped
 estimate_kl:
-  do_estimation: True
+  do_estimation: False
   KL_direction: 'forward' # If forward then it is KL(training_data || samples)
                           # If reverse then it is KL(samples || training_data)
   samples_file: 'saved_data/3008_grid_search/md_optimal_samples.npy'
   num_samples: 1000 # If given, only take this number of samples from the sample file
   save_name: 'saved_data/temp/test_kls.txt'
   samples_file_2: 'saved_data/0609_md_full1e6_seed_123/aldp_data.npy' # If given will use these samples instead of the training data
+  extra_forward_pass: False
 
 # Compute the KL divergence for samples from a grid of different parameter values
 grid_search_kl_calc:
@@ -126,7 +127,7 @@ estimate_sksd:
 
 train_ei_sksd:
   do_train: False
-  iters: 1000
+  iters: 10
   samples_per_iter: 100
   ei_lr: 1.e-2
   sksd_lr: 1.e-3
@@ -134,7 +135,7 @@ train_ei_sksd:
   sksd_lr_decay_steps: 1
   save_interval: 50
   save_path: 'saved_data/temp/' 
-  resume: True
+  resume: False
   time_limit: 15
 
 train_acc_prob:
@@ -146,3 +147,9 @@ train_acc_prob:
   batch_num: 10
   save_interval: 5
   save_path: 'saved_data/temp/'
+
+train_worst_case_acc_prob:
+  do_train: False
+  mini_batch_size: 128
+  max_iters: 100
+  percent_change_each_iter: 5

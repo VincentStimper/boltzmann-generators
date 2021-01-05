@@ -330,6 +330,7 @@ def main():
         
         print("Iter    Loss")
         for iter in range(start_iter, config['ei_training']['iters']):
+            start = time()
             optimizer.zero_grad()
             loss = -flowhmc.eval_log_target(config['ei_training']['samples_per_iter'])
             if not torch.isnan(loss):
@@ -337,7 +338,7 @@ def main():
             optimizer.step()
 
             losses = np.append(losses, loss.detach().numpy())
-            print(iter, loss.detach().numpy())
+            print(iter, loss.detach().numpy(), "{} seconds".format(time()-start))
 
             if (iter+1)%config['ei_training']['save_interval'] == 0:
                 np.savetxt(config['ei_training']['save_path'] + "trainprog_" + \
@@ -585,6 +586,8 @@ def main():
 
         # convert to internal coords
         pyt_samples = torch.from_numpy(samples)
+        if config['estimate_kl']['extra_forward_pass']:
+            pyt_samples, _ = flowhmc.flows[-1].forward(pyt_samples)
         ic_samples, _ = flowhmc.flows[-1].inverse(pyt_samples)
         samples = ic_samples.detach().numpy()
 
@@ -834,15 +837,15 @@ def main():
                 start_iter = int(latest_cp[-8:-3])
                 flowhmc.load_state_dict(torch.load(latest_cp))
                 hmc_optimizer_path = config['train_ei_sksd']['save_path'] + \
-                                     "hmc_optimizer_" + save_name_base + ".pt"
+                                        "hmc_optimizer_" + save_name_base + ".pt"
                 if os.path.exists(hmc_optimizer_path):
                     hmc_optimizer.load_state_dict(torch.load(hmc_optimizer_path))
                 scale_optimizer_path = config['train_ei_sksd']['save_path'] + \
-                                       "scale_optimizer_" + save_name_base + ".pt"
+                                        "scale_optimizer_" + save_name_base + ".pt"
                 if os.path.exists(scale_optimizer_path):
                     scale_optimizer.load_state_dict(torch.load(scale_optimizer_path))
                 trainprog_path = config['train_ei_sksd']['save_path'] + "trainprog_" + \
-                                 save_name_base + "_ckpt_%05i.txt" % start_iter
+                                    save_name_base + "_ckpt_%05i.txt" % start_iter
                 if os.path.exists(trainprog_path):
                     data = np.loadtxt(trainprog_path)
                     ei_losses = data[:, 0]
@@ -869,6 +872,7 @@ def main():
 
         print("Iter    EI loss     SKSD      scale")
         for iter in range(start_iter, config['train_ei_sksd']['iters']):
+            start = time()
             hmc_optimizer.zero_grad()
 
             x, _ = flowhmc.rnvp_initial_dist.forward(
@@ -879,9 +883,15 @@ def main():
             log_probs = flowhmc.target_dist.log_prob(x)
             ei_loss = -torch.mean(log_probs)
 
+            two_time = time()
+            print("Time for calculating loss {}".format(two_time-start))
+
             if not torch.isnan(ei_loss):
                 ei_loss.backward(retain_graph=True)
             hmc_optimizer.step()
+
+            three_time = time()
+            print("Time for calculating ei grads {}".format(three_time-two_time))
 
             scale_optimizer.zero_grad()
             gradlogp = flowhmc.flows[-2].gradlogP(x)
@@ -889,6 +899,9 @@ def main():
             sksd = bg.utils.SKSD(x, gradlogp, g)
             sksd.backward()
             scale_optimizer.step()
+
+            four_time = time()
+            print("Time for calculating sksd grads {}".format(four_time-three_time))
 
 
             if config['initial_dist_model']['scaling'] is not None:
@@ -899,7 +912,8 @@ def main():
             print("{:4}".format(iter),
                 "{:10.4f}".format(ei_loss),
                 "{:10.4f}".format(sksd),
-                "{:10.4f}".format(scale))
+                "{:10.4f}".format(scale),
+                "{} seconds".format(time()-start))
 
             ei_losses = np.append(ei_losses, ei_loss.detach().numpy())
             sksd_losses = np.append(sksd_losses, sksd.detach().numpy())
@@ -916,9 +930,9 @@ def main():
                 torch.save(flowhmc.state_dict(), config['train_ei_sksd']['save_path'] + \
                     "model_ckpt_" + save_name_base + "_iter_%05i.pt" % (iter + 1))
                 torch.save(hmc_optimizer.state_dict(), config['train_ei_sksd']['save_path'] + \
-                           "hmc_optimizer_" + save_name_base + ".pt")
+                            "hmc_optimizer_" + save_name_base + ".pt")
                 torch.save(scale_optimizer.state_dict(), config['train_ei_sksd']['save_path'] + \
-                           "scale_optimizer_" + save_name_base + ".pt")
+                            "scale_optimizer_" + save_name_base + ".pt")
 
                 if 'time_limit' in config['train_ei_sksd'] \
                         and (time() - start_time) / 3600 > config['train_ei_sksd']['time_limit']:
@@ -979,8 +993,71 @@ def main():
                 torch.save(flowhmc.state_dict(), config['train_acc_prob']['save_path'] + \
                     "model_ckpt_" + save_name_base + "_iter_%05i.pt" % (i + 1))
 
+    if config['train_worst_case_acc_prob']['do_train']:
+        print("Training step sizes using worst case acceptance probability")
+
+        # First estimate standard deviation of initial distribution for each dimension
+        initial_dist_samples = flowhmc.sample_initial_dist(10000).detach().numpy()
+        stds = np.std(initial_dist_samples, axis=0)
+
+        # Do training
+        mini_batch_size = config['train_worst_case_acc_prob']['mini_batch_size']
+        eps_0 = config['hmc']['starting_step_size']
+        eps_0_history = []
+        for i in range(config['train_worst_case_acc_prob']['max_iters']):
+            print("iter", i)
+            eps_t = eps_0 * stds
+            for j in range(flowhmc.end_init_flow_idx, len(flowhmc.flows)-1):
+                new_step_sizes = np.log(eps_t)
+                flowhmc.flows[j].log_step_size = \
+                    torch.nn.Parameter(torch.from_numpy(new_step_sizes))
+
+            total_acc_probs = torch.zeros((config['hmc']['chain_length'], mini_batch_size))
+
+            x, _ = flowhmc.rnvp_initial_dist.forward(mini_batch_size)
+            starting_point = x
+
+            grads = torch.zeros((50, 10, 128, 60))
+            ps = torch.zeros((50, 10, 128, 60))
+            zs = torch.zeros((50, 10, 128, 60))
+
+            for j, flow in enumerate(flowhmc.flows):
+                if j >= flowhmc.end_init_flow_idx and j < len(flowhmc.flows)-1:
+                    x, _, acc_probs, grad, p, z = flow.forward(x, True)
+                    total_acc_probs[j - flowhmc.end_init_flow_idx, :] = acc_probs
+                    grads[j-flowhmc.end_init_flow_idx, :, :, :] = grad
+                    ps[j-flowhmc.end_init_flow_idx, :, :, :] = p
+                    zs[j-flowhmc.end_init_flow_idx, :, :, :] = z
+                else:
+                    x, _ = flow.forward(x)
+
+            mean_acc_probs = torch.mean(total_acc_probs, dim=0)
+            print("mean", mean_acc_probs)
 
 
+            for k in range(128):
+                if mean_acc_probs[k] < 0.5 and mean_acc_probs[k] > 0.0001:
+                    print("For mean", mean_acc_probs[k])
+                    print("total acc probs")
+                    print(total_acc_probs[:, k])
+                    print("grads")
+                    avg_grads = torch.mean(torch.abs(grads[:, :, k, :]), dim=2)
+                    print(avg_grads)
+                    # avg_grads = torch.mean(grads)
+
+            # Remove values of 0
+            mean_acc_probs = mean_acc_probs[mean_acc_probs>1e-6]
+
+            lowest_acc_prob = torch.min(mean_acc_probs)
+            print("lowest acc prob", lowest_acc_prob)
+
+            percent_change = config['train_worst_case_acc_prob']['percent_change_each_iter']
+            if lowest_acc_prob < 0.25:
+                eps_0 = eps_0 * (1.0 - 0.01 * percent_change)
+            else:
+                eps_0 = eps_0 * (1.0 + 0.01 * percent_change)
+            print("eps 0", eps_0)
+            eps_0_history.append(eps_0)
 
 
 if __name__ == "__main__":
