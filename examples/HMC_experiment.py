@@ -358,6 +358,15 @@ def main(config):
                         and (time() - start_time) / 3600 > config['ei_training']['time_limit']:
                     break
 
+        # save final model
+        np.savetxt(config['ei_training']['save_path'] + "final_trainprog_" + \
+            save_name_base + ".txt", losses)
+        torch.save(flowhmc.state_dict(), config['ei_training']['save_path'] + \
+            "final_model_" + save_name_base + ".pt")
+        torch.save(optimizer.state_dict(), config['ei_training']['save_path'] + \
+            "final_optimizer_" + save_name_base + ".pt")
+        
+
 
     # Do grid search over parameters
     if config['hmc_grid_search']['do_grid_search']:
