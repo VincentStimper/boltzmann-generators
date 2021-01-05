@@ -41,18 +41,21 @@ initial_dist_model:
   noise_std: null # if not null then will add gaussian noise with this std to the output of the initial distribution
 
 hmc:
-  chain_length: 50 #30
+  chain_length: 10 #30
   leapfrog_steps: 10
-  starting_step_size: 0.01 #0.01 initial step size used in all layers and dims
-  starting_log_mass: 0.0 # initial log mass used in all layers and dims
+  starting_step_size_min: 0.00001
+  starting_step_size_max: 0.1
+  starting_log_mass_min: -2
+  starting_log_mass_max: 0
+
 
 full_model_path: null # 'saved_data/2908_train_acc_prob/[OLD]alpha_0/model_ckpt_train_acc_prob_iter_00050.pt'
 
 ei_training:
-  do_training: False
+  do_training: True
   iters: 1000
   samples_per_iter: 100
-  save_path: 'saved_data/temp/'
+  save_path: ''
   lr: 1.e-2
   save_interval: 50
   resume: False

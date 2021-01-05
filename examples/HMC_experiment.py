@@ -203,13 +203,19 @@ def main(config):
 
             # Add HMC layers
             for i in range(config['hmc']['chain_length']):
-                step_size = config['hmc']['starting_step_size'] * \
-                    torch.ones((latent_size,))
-                log_step_size = torch.log(step_size)
-                log_mass = config['hmc']['starting_log_mass'] * \
-                    torch.ones((latent_size,))
-                raw_flows += [nf.flows.HamiltonianMonteCarlo(self.target_dist,
-                    config['hmc']['leapfrog_steps'], log_step_size, log_mass)]
+                lss_min = math.log(config['hmc']['starting_step_size_min'])
+                lss_max = math.log(config['hmc']['starting_step_size_max'])
+                log_step_size = torch.rand(60) * (lss_max - lss_min) + lss_min
+                lm_min = config['hmc']['starting_log_mass_min']
+                lm_max = config['hmc']['starting_log_mass_max']
+                log_mass = torch.rand(60) * (lm_max - lm_min) + lm_min
+
+                raw_flows += [nf.flows.HamiltonianMonteCarlo(
+                    target=self.target_dist,
+                    steps=config['hmc']['leapfrog_steps'],
+                    log_step_size=log_step_size,
+                    log_mass=log_mass)]
+
 
             raw_flows += [coord_transform]
 
