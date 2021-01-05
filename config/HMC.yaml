@@ -1,4 +1,11 @@
 # Config file for specifying HMC based experiments and models
+hydra:
+  sweep:
+    dir: outputs\${now:%Y-%m-%d_%H-%M-%S}_${name}_sweep
+  run:
+    dir: outputs\${now:%Y-%m-%d_%H-%M-%S}_${name}_run
+
+name: "DefaultName"
 
 system:
 
@@ -11,6 +18,7 @@ system:
   parallel_energy: False
   n_threads: null
   training_data_path: 'saved_data/aldp_vacuum_without_const.h5' # will create if it doesn't exist
+  seed_numpy_and_pytorch: True
   seed: 123
 
 initial_dist_model:
@@ -49,6 +57,7 @@ ei_training:
   save_interval: 50
   resume: False
   time_limit: 200
+  resume_path: null # If you want to resume, where from?
 
 hmc_grid_search:
   do_grid_search: False
@@ -136,6 +145,7 @@ train_ei_sksd:
   save_interval: 50
   save_path: 'saved_data/temp/' 
   resume: False
+  resume_path: null # If resume, which path?
   time_limit: 15
 
 train_acc_prob:

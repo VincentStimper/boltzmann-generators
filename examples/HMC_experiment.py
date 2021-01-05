@@ -33,20 +33,20 @@ from tqdm import tqdm
 
 from time import time
 
-def main():
+import hydra
+import subprocess
 
-    parser = argparse.ArgumentParser(description="Run experiments/generate samples from HMC chains")
+@hydra.main(config_path='../config', config_name='HMC')
+def main(config):
+    if config['system']['seed_numpy_and_pytorch']:
+        seed = config['system']['seed']
+        np.random.seed(seed)
+        torch.manual_seed(seed)
 
-    parser.add_argument('--config', type=str,
-                        help='Path to config file specifying the experiment details',
-                        default='../config/HMC.yaml')
-    parser.add_argument('--processID', type=int,
-                        help='When generating batches of samples in parallel, this ID can be appended to file names to differentiate between processes',
-                        default=0)
-
-    args = parser.parse_args()
-
-    config = bg.utils.get_config(args.config)
+    git_hash = subprocess.check_output(["git", "rev-parse", "--verify", "HEAD"])
+    git_hash = git_hash.decode("utf-8")
+    with open('git_hash.txt', 'w') as f:
+        f.write(git_hash)
 
     class FlowHMC(nn.Module):
         """
@@ -106,7 +106,7 @@ def main():
 
 
             # Simulate the training data if not done already
-            if not os.path.exists(config['system']['training_data_path']):
+            if not os.path.exists(hydra.utils.to_absolute_path(config['system']['training_data_path'])):
                 print("generating training data as file ",
                     config['system']['training_data_path'], " does not exist")
                 if 'seed' in config['system']:
@@ -115,14 +115,14 @@ def main():
                 sim.context.setPositions(system.positions)
                 sim.minimizeEnergy()
                 sim.reporters.append(mdtraj.reporters.HDF5Reporter(
-                    config['system']['training_data_path'], 10))
+                    hydra.utils.to_absolute_path(config['system']['training_data_path']), 10))
                 sim.reporters.append(StateDataReporter(stdout, 100000, step=True,
                         potentialEnergy=True, temperature=True))
                 sim.step(1000000)
                 sim.reporters[0].close()
 
             # Load the training data
-            self.training_data_traj = mdtraj.load(config['system']['training_data_path'])
+            self.training_data_traj = mdtraj.load(hydra.utils.to_absolute_path(config['system']['training_data_path']))
             self.training_data_traj.center_coordinates()
             ind = self.training_data_traj.top.select("backbone")
             self.training_data_traj.superpose(self.training_data_traj, 0, atom_indices=ind,
@@ -220,7 +220,7 @@ def main():
             # Loads parameters into the inital flow from the given path
             print("Loading initial flow model:",
                 config['initial_dist_model']['load_model_path'])
-            loaded_param_dict = torch.load(config['initial_dist_model']['load_model_path'],
+            loaded_param_dict = torch.load(hydra.utils.to_absolute_path(config['initial_dist_model']['load_model_path']),
                 map_location=torch.device(config['initial_dist_model']['device']))
             with torch.no_grad():
                 state_dict = self.state_dict()
@@ -297,7 +297,7 @@ def main():
     # Load a full model
     if config['full_model_path'] is not None:
         print("Loading full model: ", config['full_model_path'])
-        flowhmc.load_state_dict(torch.load(config['full_model_path']))
+        flowhmc.load_state_dict(torch.load(hydra.utils.to_absolute_path(config['full_model_path'])))
 
     # Train with Ergodic Inference
     if config['ei_training']['do_training']:
@@ -309,15 +309,15 @@ def main():
 
         if config['ei_training']['resume']:
             latest_cp = bg.utils.get_latest_checkpoint(
-                config['ei_training']['save_path'], 'model')
+                hydra.utils.to_absolute_path(config['ei_training']['resume_path']), 'model')
             if latest_cp is not None:
                 start_iter = int(latest_cp[-8:-3])
                 flowhmc.load_state_dict(torch.load(latest_cp))
-                optimizer_path = config['ei_training']['save_path'] + \
+                optimizer_path = hydra.utils.to_absolute_path(config['ei_training']['resume_path']) + \
                     "optimizer_" + save_name_base + ".pt"
                 if os.path.exists(optimizer_path):
                     optimizer.load_state_dict(torch.load(optimizer_path))
-                trainprog_path = config['ei_training']['save_path'] + 'trainprog_' + \
+                trainprog_path = hydra.utils.to_absolute_path(config['ei_training']['resume_path']) + 'trainprog_' + \
                     save_name_base + "_ckpt_%05i.txt" % start_iter
                 if os.path.exists(trainprog_path):
                     losses = np.loadtxt(trainprog_path)
@@ -396,7 +396,7 @@ def main():
         # Load dictionary of samples
         # Should have a key of (log_step_size, log_mass) to a value of the samples
         # at those parameter settings
-        samples_dict = np.load(config['hmc_grid_search_ksd_calc']['sample_dict_path'],
+        samples_dict = np.load(hydra.utils.to_absolute_path(config['hmc_grid_search_ksd_calc']['sample_dict_path']),
             allow_pickle=True)
         samples_dict = samples_dict.item()
 
@@ -450,7 +450,7 @@ def main():
     # choose the best hyperparams from a dictionary of param settings vs KSD
     if config['hmc_grid_search_choose_best_hpams']['do_choice']:
         print("Choosing best parameter")
-        ksd_dict = np.load(config['hmc_grid_search_choose_best_hpams']['ksd_dict_path'],
+        ksd_dict = np.load(hydra.utils.to_absolute_path(config['hmc_grid_search_choose_best_hpams']['ksd_dict_path']),
             allow_pickle=True)
         ksd_dict = ksd_dict.item()
 
@@ -469,7 +469,7 @@ def main():
         print("Doing general KSD calculation")
         print("loading samples file",
             config['general_calc_KSD']['samples_path'])
-        samples = np.load(config['general_calc_KSD']['samples_path'])
+        samples = np.load(hydra.utils.to_absolute_path(config['general_calc_KSD']['samples_path']))
 
         # convert to internal coords
         pyt_samples = torch.from_numpy(samples)
@@ -558,6 +558,7 @@ def main():
             
     # Just generate some samples and save them
     if config['generate_samples']['do_generation']:
+        raise NotImplementedError # Need to figure out parallel with hydra
         print("Generating samples")
         for batch_num in range(config['generate_samples']['num_repeats']):
             # Don't track gradients as we are just sampling
@@ -574,10 +575,10 @@ def main():
     if config['estimate_kl']['do_estimation']:
         print("Estimating KL divergence")
         print("Loading samples file: ", config['estimate_kl']['samples_file'])
-        samples = np.load(config['estimate_kl']['samples_file']).astype('float64')
+        samples = np.load(hydra.utils.to_absolute_path(config['estimate_kl']['samples_file'])).astype('float64')
         if 'samples_file_2' in config['estimate_kl']:
             print("Loading second samples file: ", config['estimate_kl']['samples_file_2'])
-            samples_2 = np.load(config['estimate_kl']['samples_file_2']).astype('float64')
+            samples_2 = np.load(hydra.utils.to_absolute_path(config['estimate_kl']['samples_file_2'])).astype('float64')
 
         if config['estimate_kl']['num_samples'] is not None:
             samples = samples[0:config['estimate_kl']['num_samples'], :]
@@ -668,7 +669,7 @@ def main():
         print("Loading sample dict file",
             config['grid_search_kl_calc']['sample_dict_path'])
         samples_dict = np.load(
-            config['grid_search_kl_calc']['sample_dict_path'],
+            hydra.utils.to_absolute_path(config['grid_search_kl_calc']['sample_dict_path']),
             allow_pickle=True)
         samples_dict = samples_dict.item()
 
@@ -726,7 +727,7 @@ def main():
     if config['eval_log_target']['do_eval']:
         print("Evaluating log target at samples",
             config['eval_log_target']['samples'])
-        samples = np.load(config['eval_log_target']['samples'])
+        samples = np.load(hydra.utils.to_absolute_path(config['eval_log_target']['samples']))
 
         # convert to internal coords
         pyt_samples = torch.from_numpy(samples)
@@ -761,7 +762,7 @@ def main():
         print("Estimating SKSD with samples",
             config['estimate_sksd']['samples'])
 
-        samples = np.load(config['estimate_sksd']['samples'])
+        samples = np.load(hydra.utils.to_absolute_path(config['estimate_sksd']['samples']))
 
         g = torch.eye(60).double()
 
@@ -832,19 +833,21 @@ def main():
         save_name_base = "hmc_ei_sksd"
 
         if config['train_ei_sksd']['resume']:
-            latest_cp = bg.utils.get_latest_checkpoint(config['train_ei_sksd']['save_path'], 'model')
+            latest_cp = bg.utils.get_latest_checkpoint(
+                hydra.utils.to_absolute_path(config['train_ei_sksd']['resume_path']),
+                'model')
             if latest_cp is not None:
                 start_iter = int(latest_cp[-8:-3])
                 flowhmc.load_state_dict(torch.load(latest_cp))
-                hmc_optimizer_path = config['train_ei_sksd']['save_path'] + \
+                hmc_optimizer_path = hydra.utils.to_absolute_path(config['train_ei_sksd']['resume_path']) + \
                                         "hmc_optimizer_" + save_name_base + ".pt"
                 if os.path.exists(hmc_optimizer_path):
                     hmc_optimizer.load_state_dict(torch.load(hmc_optimizer_path))
-                scale_optimizer_path = config['train_ei_sksd']['save_path'] + \
+                scale_optimizer_path = hydra.utils.to_absolute_path(config['train_ei_sksd']['save_path']) + \
                                         "scale_optimizer_" + save_name_base + ".pt"
                 if os.path.exists(scale_optimizer_path):
                     scale_optimizer.load_state_dict(torch.load(scale_optimizer_path))
-                trainprog_path = config['train_ei_sksd']['save_path'] + "trainprog_" + \
+                trainprog_path = hydra.utils.to_absolute_path(config['train_ei_sksd']['save_path']) + "trainprog_" + \
                                     save_name_base + "_ckpt_%05i.txt" % start_iter
                 if os.path.exists(trainprog_path):
                     data = np.loadtxt(trainprog_path)

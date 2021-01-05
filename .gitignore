@@ -3,6 +3,7 @@ models/
 notgit/
 saved_data/
 .vscode/
+outputs/
 
 
 # Byte-compiled / optimized / DLL files
