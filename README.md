@@ -1,5 +1,8 @@
-# boltzmann-generators
-Implementation of methods to sample from Boltzmann distributions
+# Boltzmann generators
+
+This package comprises several tools to train Boltzmann generators, 
+i.e. normalizing flows approximating Boltzmann distributions.
+
 
 ## Methods of Installation
 
