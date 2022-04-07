@@ -1,10 +1,10 @@
 import torch
-import numpy as np
 import normflow as nf
 import multiprocessing as mp
 from torch import nn
 
 from . import openmm_interface as omi
+
 
 
 class Boltzmann(nf.distributions.PriorDistribution):
