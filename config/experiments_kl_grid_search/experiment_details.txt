@@ -1,0 +1,11 @@
+KL divergence values for each parameter setting were calculated using 
+KL(training data || model samples)
+The best parameter setting was chosen by taking the median value over the 
+60 marginals for each of the 25 parameter settings then choosing the 
+parameter setting with the lowest median kl.
+
+Optimal parameter settings are:
+alpha_0: log_step_size = -3.11 log_mass = 0.0
+alpha_1: log_step_size = -3.11 log_mass = 0.0
+alpha_2: log_step_size = -4.61 log_mass = -3.0 
+     md: log_step_size = -4.61 log_mass = -1.5 

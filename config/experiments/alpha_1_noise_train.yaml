@@ -1,25 +1,16 @@
 # Config file for specifying HMC based experiments and models
-hydra:
-  sweep:
-    dir: outputs\${now:%Y-%m-%d_%H-%M-%S}_${name}_sweep
-  run:
-    dir: outputs\${now:%Y-%m-%d_%H-%M-%S}_${name}_run
-
-name: "DefaultName"
 
 system:
 
   name: AlanineDipeptideVacuum
   temperature: 1000
-  energy_cut: 1.e+5 # 2
+  energy_cut: 1.e+5
   energy_max: 1.e+20
-  platform: CPU
+  platform: Reference
   precision: double
-  parallel_energy: False
-  n_threads: null
+  parallel_energy: True
+  n_threads: 4
   training_data_path: 'saved_data/aldp_vacuum_without_const.h5' # will create if it doesn't exist
-  seed_numpy_and_pytorch: True
-  seed: 123
 
 initial_dist_model:
   latent_size: 60
@@ -34,33 +25,27 @@ initial_dist_model:
   
   # model path, optional. If given, will load the initial part of the model from
   # this location
-  load_model_path: "models/rnvp_aldp_no_const_30k.pt" # "models/2908_experiments/ml_with_md_initial_dist.pt" #
+  load_model_path: "path/to/alpha_1_model"
   final_flow_idx_for_loaded_model: 15 #For loading the coord transform params
   device: cpu
-  scaling: 1.0 # if not null then will apply this scaling to rnvp
-  noise_std: null # if not null then will add gaussian noise with this std to the output of the initial distribution
+  scaling: null # if not null then will apply this scaling to rnvp
+  noise_std: 1.0 # if not null then will add gaussian noise with this std to the output of the initial distribution
 
 hmc:
-  chain_length: 10 #30
+  chain_length: 50
   leapfrog_steps: 10
-  starting_step_size_min: 0.00001
-  starting_step_size_max: 0.1
-  starting_log_mass_min: -2
-  starting_log_mass_max: 0
+  starting_step_size: 0.01 # initial step size used in all layers and dims
+  starting_log_mass: 0.0 # initial log mass used in all layers and dims
 
-
-full_model_path: null # 'saved_data/2908_train_acc_prob/[OLD]alpha_0/model_ckpt_train_acc_prob_iter_00050.pt'
+full_model_path:  null
 
 ei_training:
-  do_training: True
-  iters: 1000
-  samples_per_iter: 100
-  save_path: ''
+  do_training: False
+  iters: 10000
+  samples_per_iter: 256
+  save_path: 'saved_data/2306eitraining/'
   lr: 1.e-2
   save_interval: 50
-  resume: False
-  time_limit: 200
-  resume_path: null # If you want to resume, where from?
 
 hmc_grid_search:
   do_grid_search: False
@@ -69,8 +54,8 @@ hmc_grid_search:
   log_mass_min: -8
   log_mass_max: 3
   fidelity: 4 # side length of grid. total number of points=fidelity^2
-  save_path: 'saved_data/temp/'
-  num_samples: 10
+  save_path: 'saved_data/1606gridsearch/'
+  num_samples: 10000
   include_cl_arg_in_save_name: False
 
 hmc_grid_search_ksd_calc:
@@ -96,10 +81,10 @@ general_calc_KSD: # Just calculate the KSD for given samples
 generate_samples: # Just generate samples and save them
   do_generation: False
   save_path: 'saved_data/temp/' # where to save the samples. Needs to include final forward slash
-  save_name_base: 'alpha_1_train_acc_prob_samples' # the start of the file name
-  num_samples: 10000 # how many samples to generate in each batch
-  num_repeats: 10 # how many batches to save
-  include_cl_arg_in_save_name: False # whether to include the process id cl arg in the saved file name
+  save_name_base: 'EI_samples' # the start of the file name
+  num_samples: 10 # how many samples to generate in each batch
+  num_repeats: 1 # how many batches to save
+  include_cl_arg_in_save_name: True # whether to include the process id cl arg in the saved file name
 
 
 # Estimate the KL divergence between samples and the training data.
@@ -108,11 +93,9 @@ estimate_kl:
   do_estimation: False
   KL_direction: 'forward' # If forward then it is KL(training_data || samples)
                           # If reverse then it is KL(samples || training_data)
-  samples_file: 'saved_data/3008_grid_search/md_optimal_samples.npy'
-  num_samples: 1000 # If given, only take this number of samples from the sample file
-  save_name: 'saved_data/temp/test_kls.txt'
-  samples_file_2: 'saved_data/0609_md_full1e6_seed_123/aldp_data.npy' # If given will use these samples instead of the training data
-  extra_forward_pass: False
+  samples_file: 'saved_data/2706eisamples.npy'
+  num_samples: 100000 # If given, only take this number of samples from the sample file
+  save_name: 'saved_data/0207KLcalcs/EI_KLs.txt'
 
 # Compute the KL divergence for samples from a grid of different parameter values
 grid_search_kl_calc:
@@ -138,31 +121,14 @@ estimate_sksd:
   save_name: 'saved_data/2507_sksds/1_00.txt'
 
 train_ei_sksd:
-  do_train: False
-  iters: 10
-  samples_per_iter: 100
+  do_train: True
+  iters: 1000
+  samples_per_iter: 256
   ei_lr: 1.e-2
-  sksd_lr: 1.e-3
+  sksd_lr: 5.e-3
   sksd_lr_decay_factor: 0.8
-  sksd_lr_decay_steps: 1
-  save_interval: 50
-  save_path: 'saved_data/temp/' 
-  resume: False
-  resume_path: null # If resume, which path?
-  time_limit: 15
+  sksd_lr_decay_steps: 100
+  save_interval: 100
+  save_path: 'path/to/train/save/location'
+  continue_iter: null
 
-train_acc_prob:
-  do_train: False
-  learning_rate_decay: 0.6 # must be (0.5, 1]
-  learning_rate: 2.0
-  target_acc_prob: 0.65
-  iterations: 100
-  batch_num: 10
-  save_interval: 5
-  save_path: 'saved_data/temp/'
-
-train_worst_case_acc_prob:
-  do_train: False
-  mini_batch_size: 128
-  max_iters: 100
-  percent_change_each_iter: 5

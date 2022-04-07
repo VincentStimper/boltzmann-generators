@@ -15,7 +15,7 @@ import multiprocessing as mp
 Compute the KSD divergence using samples, adapted from the theano code
 """
 # From https://github.com/YingzhenLi/SteinGrad/blob/master/hamiltonian/ksd.py
-def KSD(z, Sqx, in_h_square=None):
+def KSD(z, Sqx, in_h_square=None, U_statistic=True):
 
     # compute the rbf kernel
     K, dimZ = z.shape
@@ -27,6 +27,7 @@ def KSD(z, Sqx, in_h_square=None):
         h_square = 0.5 * median / np.log(K+1.0)
     else:
         h_square = in_h_square
+    print("h_square", h_square)
     Kxy = np.exp(- pdist_square / h_square / 2.0)
 
     # now compute KSD
@@ -39,10 +40,13 @@ def KSD(z, Sqx, in_h_square=None):
     M = (np.dot(Sqx, Sqx.T) + Sqxdy + dxSqy + dxdy) * Kxy
 
     # the following for U-statistic
-    M2 = M - np.diag(np.diag(M))
-    return np.sum(M2) / (K * (K - 1))
-
-def blockKSD(z, Sqx, num_blocks, h_square):
+    if U_statistic:
+        M2 = M - np.diag(np.diag(M))
+        return np.sum(M2) / (K * (K - 1))
+    else:
+        return np.sum(M) / (K**2)
+    
+def blockKSD(z, Sqx, num_blocks, h_square, U_statistic=True):
     K, dimZ = z.shape
     block_step = math.floor(K/num_blocks)
     culm_sum = 0
@@ -65,10 +69,13 @@ def blockKSD(z, Sqx, num_blocks, h_square):
 
             M = (np.dot(Sqxrow, Sqxcol.T) + Sqxdy + dxSqy + dxdy) * Kxy
 
-            if i == j:
+            if i == j and U_statistic:
                 M = M - np.diag(np.diag(M))
             culm_sum += np.sum(M)
-    return culm_sum / (K*(K-1))
+    if U_statistic:
+        return culm_sum / (K*(K-1))
+    else:
+        return culm_sum / (K**2)
 
 def blockKSDparallel(z, Sqx, num_blocks, h_square, num_processes):
     K, dimZ = z.shape
@@ -187,3 +194,136 @@ def estimate_kl(samples_a, samples_b, range_min, range_max):
         return q(x) * (np.log(q(x) + eps) - np.log(p(x) + eps))
 
     return scipy.integrate.quad(kl, range_min, range_max)[0]
+
+def SKSD(x, Sqx, g):
+    """
+    Estimates the sliced KSD using pytorch functions and the squared
+    exponential function
+    :param x: samples (N x dim)
+    :param Sqx: \nabla_x log p(x) evaluated at samples (N x dim)
+    :param g: The slicing directions each row is one direction (dim x dim)
+    """
+
+    N = x.shape[0]
+
+    # Project each sample in each of the g directions
+    proj_x = torch.matmul(x, g.transpose(0,1)) # (N x dim)
+
+    transpose_proj_x = torch.transpose(proj_x, 0, 1)
+    exp_transpose_proj_x = torch.unsqueeze(transpose_proj_x, 2)
+    exp_transpose_proj_x = exp_transpose_proj_x.contiguous()
+
+    # Squared pairwise distances (dim x N x N)
+    # The squared pairwise distances within each 1-D projection hence the number
+    # of N x N matrices is dim
+    squared_pairwise_distances = torch.cdist(exp_transpose_proj_x, exp_transpose_proj_x) ** 2
+
+    # median squared distances (dim), one for each projection direction
+    median_squared_distances = torch.median(
+        torch.flatten(squared_pairwise_distances, start_dim=1, end_dim=2),
+        dim=1)[0]
+
+    # Kernel matrix (dim x N x N)
+    K = torch.exp(- squared_pairwise_distances / \
+        median_squared_distances.unsqueeze(1).unsqueeze(1))
+
+    # Since the r directions are just the one-hot basis vectors, the matrix
+    # s_p^r is just the same as Sqx
+    term1 = Sqx.transpose(0,1).unsqueeze(2) * K * Sqx.transpose(0,1).unsqueeze(1)
+
+    diag_g = g.diag()
+    term2 = diag_g.unsqueeze(1).unsqueeze(2) * \
+        Sqx.transpose(0,1).unsqueeze(1) * \
+        (-2.0 / median_squared_distances.unsqueeze(1).unsqueeze(2)) * \
+        (proj_x.transpose(0,1).unsqueeze(2) - proj_x.transpose(0,1).unsqueeze(1)) * \
+        K
+
+    term3 = diag_g.unsqueeze(1).unsqueeze(2) * \
+        Sqx.transpose(0,1).unsqueeze(2) * \
+        (2.0 / median_squared_distances.unsqueeze(1).unsqueeze(2)) * \
+        (proj_x.transpose(0,1).unsqueeze(2) - proj_x.transpose(0,1).unsqueeze(1)) * \
+        K
+
+    term4 = diag_g.unsqueeze(1).unsqueeze(2) ** 2 * \
+        K * \
+        (
+            (2.0 / median_squared_distances.unsqueeze(1).unsqueeze(2)) - \
+            (4.0 / median_squared_distances.unsqueeze(1).unsqueeze(2) ** 2) * \
+            (proj_x.transpose(0,1).unsqueeze(2) - proj_x.transpose(0,1).unsqueeze(1)) ** 2 \
+        )
+
+    h_prg = term1 + term2 + term3 + term4
+
+    # Subtract off diagonals for U-statistic
+    h_prg_minus_diag = h_prg - \
+        torch.diag_embed(torch.diagonal(h_prg, dim1=-2, dim2=-1))
+
+    sksd = (1.0 / (N * (N-1))) * torch.sum(h_prg_minus_diag)
+
+    return sksd
+
+def blockSKSD(x, Sqx, g, num_blocks, num_median=None, input_median=None):
+    N, dim = x.shape
+    block_step = math.floor(N/num_blocks)
+
+    diag_g = g.diag()
+
+    # Project each sample in each of the g directions
+    proj_x = torch.matmul(x, g.transpose(0,1)) # (N x dim)
+
+    transpose_proj_x = torch.transpose(proj_x, 0, 1)
+    exp_transpose_proj_x = torch.unsqueeze(transpose_proj_x, 2) # (dim x N x 1)
+    exp_transpose_proj_x = exp_transpose_proj_x.contiguous()
+
+    if num_median is None:
+        median_squared_distances = input_median
+    else:
+        # Median estimation:
+        squared_pairwise_distances = torch.cdist(
+            exp_transpose_proj_x[:, 0:num_median, :],
+            exp_transpose_proj_x[:, 0:num_median, :]) ** 2
+        median_squared_distances = torch.median(
+            torch.flatten(squared_pairwise_distances, start_dim=1, end_dim=2),
+            dim=1)[0]
+
+    culm_sum = 0
+    for i in range(dim):
+        for j in np.floor(np.linspace(0, N, num=num_blocks+1)[0:-1]).astype(int):
+            for k in np.floor(np.linspace(0, N, num=num_blocks+1)[0:-1]).astype(int):
+                pass
+                squared_pairwise_distances = torch.cdist(
+                    exp_transpose_proj_x[i, j:j+block_step, :],
+                    exp_transpose_proj_x[i, k:k+block_step, :]) ** 2 # (block_step x block_step)
+                K = torch.exp(- squared_pairwise_distances / \
+                    median_squared_distances[i])
+                term1 = Sqx[j:j+block_step, i].unsqueeze(1) * \
+                    K * \
+                    Sqx[k:k+block_step, i].unsqueeze(0)
+                term2 = diag_g[i] * Sqx[k:k+block_step, i].unsqueeze(0) * \
+                    (-2.0 / median_squared_distances[i]) * \
+                    (proj_x[j:j+block_step, i].unsqueeze(1) - \
+                        proj_x[k:k+block_step, i].unsqueeze(0)) * \
+                    K
+                term3 = diag_g[i] * Sqx[j:j+block_step, i].unsqueeze(1) * \
+                    (2.0 / median_squared_distances[i]) * \
+                    (proj_x[j:j+block_step, i].unsqueeze(1) - \
+                        proj_x[k:k+block_step, i].unsqueeze(0)) * \
+                    K
+                term4 = diag_g[i] ** 2 * K * \
+                    (
+                        (2.0 / median_squared_distances[i]) - \
+                        (4.0 / median_squared_distances[i]**2) * \
+                        (proj_x[j:j+block_step, i].unsqueeze(1) - \
+                            proj_x[k:k+block_step, i].unsqueeze(0)) ** 2
+                    )
+                h = term1 + term2 + term3 + term4
+
+                if j == k:
+                    h = h - torch.diag(h.diag())
+
+                culm_sum = culm_sum + torch.sum(h)
+
+    sksd = (1.0 / (N * (N-1))) * culm_sum
+
+    return sksd
+

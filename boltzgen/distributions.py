@@ -2,6 +2,7 @@ import torch
 import numpy as np
 import normflow as nf
 import multiprocessing as mp
+from torch import nn
 
 from . import openmm_interface as omi
 
@@ -35,7 +36,7 @@ class Boltzmann(nf.distributions.PriorDistribution):
         return -self.norm_energy(z)
 
 
-class TransformedBoltzmann(nf.distributions.PriorDistribution):
+class TransformedBoltzmann(nn.Module):
     """
     Boltzmann distribution with respect to transformed variables,
     uses OpenMM to get energy and forces
@@ -50,6 +51,7 @@ class TransformedBoltzmann(nf.distributions.PriorDistribution):
         :param energy_max: Maximum energy
         :param transform: Coordinate transformation
         """
+        super().__init__()
         # Save input parameters
         self.sim_context = sim_context
         self.temperature = temperature
@@ -109,7 +111,7 @@ class BoltzmannParallel(nf.distributions.PriorDistribution):
         return -self.norm_energy(z)
 
 
-class TransformedBoltzmannParallel(nf.distributions.PriorDistribution):
+class TransformedBoltzmannParallel(nn.Module):
     """
     Boltzmann distribution with respect to transformed variables,
     uses OpenMM to get energy and forces and processes the batch of
@@ -127,6 +129,7 @@ class TransformedBoltzmannParallel(nf.distributions.PriorDistribution):
         :param n_threads: Number of threads to use to process batches, set
         to the number of cpus if None
         """
+        super().__init__()
         # Save input parameters
         self.system = system
         self.temperature = temperature

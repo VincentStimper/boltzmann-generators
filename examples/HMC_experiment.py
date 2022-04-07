@@ -31,21 +31,22 @@ import argparse
 
 from tqdm import tqdm
 
-def main():
+from time import time
 
-    # parser = argparse.ArgumentParser(description="Run experiments/generate samples from HMC chains")
-    # 
-    # parser.add_argument('--config', type=str, help='Path to config file specifying the experiment details',
-    #     default='../config/HMC.yaml')
-    # parser.add_argument('--processID', type=int, help='When generating batches of samples in parallel, this ID can be appended to file names to differentiate between processes',
-    #     default=0)
-    # 
-    # args = parser.parse_args()
+import hydra
+import subprocess
 
-    # this should be able to be set from the command line
-    # config = bg.utils.get_config(args.config)
-    # config = bg.utils.get_config('saved_data/0207trainingdataKSD/HMC.yaml')
-    config = bg.utils.get_config('../config/HMC.yaml')
+@hydra.main(config_path='../config', config_name='HMC')
+def main(config):
+    if config['system']['seed_numpy_and_pytorch']:
+        seed = config['system']['seed']
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+
+    git_hash = subprocess.check_output(["git", "rev-parse", "--verify", "HEAD"])
+    git_hash = git_hash.decode("utf-8")
+    with open('git_hash.txt', 'w') as f:
+        f.write(git_hash)
 
     class FlowHMC(nn.Module):
         """
@@ -105,20 +106,23 @@ def main():
 
 
             # Simulate the training data if not done already
-            if not os.path.exists(config['system']['training_data_path']):
+            if not os.path.exists(hydra.utils.to_absolute_path(config['system']['training_data_path'])):
                 print("generating training data as file ",
                     config['system']['training_data_path'], " does not exist")
+                if 'seed' in config['system']:
+                    print("seeding integrator with", config['system']['seed'])
+                    sim.integrator.setRandomNumberSeed(config['system']['seed'])
                 sim.context.setPositions(system.positions)
                 sim.minimizeEnergy()
                 sim.reporters.append(mdtraj.reporters.HDF5Reporter(
-                    config['system']['training_data_path'], 10))
+                    hydra.utils.to_absolute_path(config['system']['training_data_path']), 10))
                 sim.reporters.append(StateDataReporter(stdout, 100000, step=True,
                         potentialEnergy=True, temperature=True))
                 sim.step(1000000)
                 sim.reporters[0].close()
 
             # Load the training data
-            self.training_data_traj = mdtraj.load(config['system']['training_data_path'])
+            self.training_data_traj = mdtraj.load(hydra.utils.to_absolute_path(config['system']['training_data_path']))
             self.training_data_traj.center_coordinates()
             ind = self.training_data_traj.top.select("backbone")
             self.training_data_traj.superpose(self.training_data_traj, 0, atom_indices=ind,
@@ -178,26 +182,51 @@ def main():
                 if config['initial_dist_model']['actnorm']:
                     raw_flows += [nf.flows.ActNorm(latent_size)]
 
+
+            if config['initial_dist_model']['scaling'] is not None:
+                print("adding scaling layer, using scaling:",
+                    config['initial_dist_model']['scaling'])
+                with torch.no_grad():
+                    x, _ = self.rnvp_initial_dist.forward(100000)
+                    for i in range(len(raw_flows)):
+                        x, _ = raw_flows[i].forward(x)
+                    raw_flows += [bg.flows.Scaling(torch.mean(x, 0),
+                        torch.log(torch.tensor(config['initial_dist_model']['scaling'])))]
+
+            if config['initial_dist_model']['noise_std'] is not None:
+                print("adding Gaussian noise layer, using noise std:",
+                    config['initial_dist_model']['noise_std'])
+                raw_flows += [bg.flows.AddNoise(
+                    torch.tensor(math.log(config['initial_dist_model']['noise_std'])))]
+
+            self.end_init_flow_idx = len(raw_flows)
+
             # Add HMC layers
             for i in range(config['hmc']['chain_length']):
-                step_size = config['hmc']['starting_step_size'] * \
-                    torch.ones((latent_size,))
-                log_step_size = torch.log(step_size)
-                log_mass = config['hmc']['starting_log_mass'] * \
-                    torch.ones((latent_size,))
-                raw_flows += [nf.flows.HamiltonianMonteCarlo(self.target_dist,
-                    config['hmc']['leapfrog_steps'], log_step_size, log_mass)]
+                lss_min = math.log(config['hmc']['starting_step_size_min'])
+                lss_max = math.log(config['hmc']['starting_step_size_max'])
+                log_step_size = torch.rand(60) * (lss_max - lss_min) + lss_min
+                lm_min = config['hmc']['starting_log_mass_min']
+                lm_max = config['hmc']['starting_log_mass_max']
+                log_mass = torch.rand(60) * (lm_max - lm_min) + lm_min
+
+                raw_flows += [nf.flows.HamiltonianMonteCarlo(
+                    target=self.target_dist,
+                    steps=config['hmc']['leapfrog_steps'],
+                    log_step_size=log_step_size,
+                    log_mass=log_mass)]
+
 
             raw_flows += [coord_transform]
 
             self.flows = nn.ModuleList(raw_flows)
 
-            self.end_init_flow_idx = len(self.flows) - 1 - \
-                config['hmc']['chain_length']
 
         def load_model_for_initial_flow(self, config, reporting=False):
             # Loads parameters into the inital flow from the given path
-            loaded_param_dict = torch.load(config['initial_dist_model']['load_model_path'],
+            print("Loading initial flow model:",
+                config['initial_dist_model']['load_model_path'])
+            loaded_param_dict = torch.load(hydra.utils.to_absolute_path(config['initial_dist_model']['load_model_path']),
                 map_location=torch.device(config['initial_dist_model']['device']))
             with torch.no_grad():
                 state_dict = self.state_dict()
@@ -237,10 +266,12 @@ def main():
                 x, _ = self.flows[i].forward(x)
             return x
         
-        def sample(self, num_samples):
+        def sample(self, num_samples, require_grad=True):
             # Draw samples from the full initial distribution plus hmc flow
             x, _ = self.rnvp_initial_dist.forward(num_samples)
             for flow in self.flows:
+                if not require_grad:
+                    x = x.detach()
                 x, _ = flow.forward(x)
             return x
 
@@ -272,7 +303,7 @@ def main():
     # Load a full model
     if config['full_model_path'] is not None:
         print("Loading full model: ", config['full_model_path'])
-        flowhmc.load_state_dict(torch.load(config['full_model_path']))
+        flowhmc.load_state_dict(torch.load(hydra.utils.to_absolute_path(config['full_model_path'])))
 
     # Train with Ergodic Inference
     if config['ei_training']['do_training']:
@@ -280,8 +311,32 @@ def main():
         optimizer = torch.optim.Adam(flowhmc.get_hmc_parameters(),
             lr=config['ei_training']['lr'])
         losses = np.array([])
-        save_name_base = "hmc_length_" + str(config['hmc']['chain_length'])
-        for iter in range(config['ei_training']['iters']):
+        save_name_base = "hmc_ei"
+
+        if config['ei_training']['resume']:
+            latest_cp = bg.utils.get_latest_checkpoint(
+                hydra.utils.to_absolute_path(config['ei_training']['resume_path']), 'model')
+            if latest_cp is not None:
+                start_iter = int(latest_cp[-8:-3])
+                flowhmc.load_state_dict(torch.load(latest_cp))
+                optimizer_path = hydra.utils.to_absolute_path(config['ei_training']['resume_path']) + \
+                    "optimizer_" + save_name_base + ".pt"
+                if os.path.exists(optimizer_path):
+                    optimizer.load_state_dict(torch.load(optimizer_path))
+                trainprog_path = hydra.utils.to_absolute_path(config['ei_training']['resume_path']) + 'trainprog_' + \
+                    save_name_base + "_ckpt_%05i.txt" % start_iter
+                if os.path.exists(trainprog_path):
+                    losses = np.loadtxt(trainprog_path)
+            else:
+                start_iter = 0
+        else:
+            start_iter = 0
+
+        start_time = time()
+        
+        print("Iter    Loss")
+        for iter in range(start_iter, config['ei_training']['iters']):
+            start = time()
             optimizer.zero_grad()
             loss = -flowhmc.eval_log_target(config['ei_training']['samples_per_iter'])
             if not torch.isnan(loss):
@@ -289,16 +344,29 @@ def main():
             optimizer.step()
 
             losses = np.append(losses, loss.detach().numpy())
+            print(iter, loss.detach().numpy(), "{} seconds".format(time()-start))
 
-            if iter%config['ei_training']['save_interval'] == 0:
+            if (iter+1)%config['ei_training']['save_interval'] == 0:
                 np.savetxt(config['ei_training']['save_path'] + "trainprog_" + \
-                    save_name_base + "_ckpt_{}".format(iter), losses)
+                    save_name_base + "_ckpt_%05i.txt"%(iter+1), losses)
                 torch.save(flowhmc.state_dict(), config['ei_training']['save_path'] + \
-                    "model_ckpt_" + save_name_base + "_iter_{}".format(iter))
-        np.savetxt(config['ei_training']['save_path'] + "trainprog_" + \
-            save_name_base + "_final", losses)
+                    "model_ckpt_" + save_name_base + "_iter_%05i.pt" % (iter + 1))
+                torch.save(optimizer.state_dict(), config['ei_training']['save_path'] + \
+                    "optimizer_" + save_name_base + ".pt")
+                
+                if 'time_limit' in config['ei_training'] \
+                        and (time() - start_time) / 3600 > config['ei_training']['time_limit']:
+                    break
+
+        # save final model
+        np.savetxt(config['ei_training']['save_path'] + "final_trainprog_" + \
+            save_name_base + ".txt", losses)
         torch.save(flowhmc.state_dict(), config['ei_training']['save_path'] + \
-            "model_ckpt_" + save_name_base + "_final")
+            "final_model_" + save_name_base + ".pt")
+        torch.save(optimizer.state_dict(), config['ei_training']['save_path'] + \
+            "final_optimizer_" + save_name_base + ".pt")
+        
+
 
     # Do grid search over parameters
     if config['hmc_grid_search']['do_grid_search']:
@@ -313,6 +381,7 @@ def main():
 
             for log_mass in np.linspace(log_mass_range[0], log_mass_range[1],
                 num=config['hmc_grid_search']['fidelity']):
+                print("setting to ", log_step_size, log_mass)
 
                 # set the step size and log_mass
                 state_dict = flowhmc.state_dict()
@@ -332,7 +401,7 @@ def main():
                     'grid_hmc_samples_log_step_size_{:.3f}'.format(log_step_size) + \
                     '_log_mass_{:.3f}'.format(log_mass)
                 if config['hmc_grid_search']['include_cl_arg_in_save_name']:
-                    suffix = args.processID
+                    suffix = str(args.processID)
                     save_name += '_id_' + suffix
                 np.save(save_name, samples.detach().numpy())
 
@@ -342,7 +411,7 @@ def main():
         # Load dictionary of samples
         # Should have a key of (log_step_size, log_mass) to a value of the samples
         # at those parameter settings
-        samples_dict = np.load(config['hmc_grid_search_ksd_calc']['sample_dict_path'],
+        samples_dict = np.load(hydra.utils.to_absolute_path(config['hmc_grid_search_ksd_calc']['sample_dict_path']),
             allow_pickle=True)
         samples_dict = samples_dict.item()
 
@@ -396,7 +465,7 @@ def main():
     # choose the best hyperparams from a dictionary of param settings vs KSD
     if config['hmc_grid_search_choose_best_hpams']['do_choice']:
         print("Choosing best parameter")
-        ksd_dict = np.load(config['hmc_grid_search_choose_best_hpams']['ksd_dict_path'],
+        ksd_dict = np.load(hydra.utils.to_absolute_path(config['hmc_grid_search_choose_best_hpams']['ksd_dict_path']),
             allow_pickle=True)
         ksd_dict = ksd_dict.item()
 
@@ -413,7 +482,9 @@ def main():
     # do a general calculation of KSD values for given samples
     if config['general_calc_KSD']['do_general_calc']:
         print("Doing general KSD calculation")
-        samples = np.load(config['general_calc_KSD']['samples_path'])
+        print("loading samples file",
+            config['general_calc_KSD']['samples_path'])
+        samples = np.load(hydra.utils.to_absolute_path(config['general_calc_KSD']['samples_path']))
 
         # convert to internal coords
         pyt_samples = torch.from_numpy(samples)
@@ -502,8 +573,12 @@ def main():
             
     # Just generate some samples and save them
     if config['generate_samples']['do_generation']:
+        raise NotImplementedError # Need to figure out parallel with hydra
+        print("Generating samples")
         for batch_num in range(config['generate_samples']['num_repeats']):
-            samples = flowhmc.sample(config['generate_samples']['num_samples'])
+            # Don't track gradients as we are just sampling
+            samples = flowhmc.sample(config['generate_samples']['num_samples'],
+                require_grad=False)
             save_name = config['generate_samples']['save_path'] + \
                 config['generate_samples']['save_name_base'] + \
                 '_batch_num_' + str(batch_num)
@@ -515,23 +590,40 @@ def main():
     if config['estimate_kl']['do_estimation']:
         print("Estimating KL divergence")
         print("Loading samples file: ", config['estimate_kl']['samples_file'])
-        samples = np.load(config['estimate_kl']['samples_file'])
+        samples = np.load(hydra.utils.to_absolute_path(config['estimate_kl']['samples_file'])).astype('float64')
+        if 'samples_file_2' in config['estimate_kl']:
+            print("Loading second samples file: ", config['estimate_kl']['samples_file_2'])
+            samples_2 = np.load(hydra.utils.to_absolute_path(config['estimate_kl']['samples_file_2'])).astype('float64')
 
         if config['estimate_kl']['num_samples'] is not None:
             samples = samples[0:config['estimate_kl']['num_samples'], :]
+            if 'samples_file_2' in config['estimate_kl']:
+                samples_2 = samples_2[0:config['estimate_kl']['num_samples'], :]
 
         # convert to internal coords
         pyt_samples = torch.from_numpy(samples)
+        if config['estimate_kl']['extra_forward_pass']:
+            pyt_samples, _ = flowhmc.flows[-1].forward(pyt_samples)
         ic_samples, _ = flowhmc.flows[-1].inverse(pyt_samples)
         samples = ic_samples.detach().numpy()
 
-        ic_training_data, _ = flowhmc.flows[-1].inverse(flowhmc.training_data)
-        ic_training_data = ic_training_data.detach().numpy()
+        if 'samples_file_2' in config['estimate_kl']:
+            base_samples = torch.from_numpy(samples_2)
+        else:
+            base_samples = flowhmc.training_data
+
+        ic_base_samples, _ = flowhmc.flows[-1].inverse(base_samples)
+        ic_base_samples = ic_base_samples.detach().numpy()
 
         # remove any nans
         num_samples = samples.shape[0]
         samples = samples[~np.isnan(samples).any(axis=1)]
         num_nans = num_samples - samples.shape[0]
+        print("removed", num_nans, " nan values.", num_nans/num_samples,
+            "proportion of total samples")
+        num_samples = ic_base_samples.shape[0]
+        ic_base_samples = ic_base_samples[~np.isnan(ic_base_samples).any(axis=1)]
+        num_nans = num_samples - ic_base_samples.shape[0]
         print("removed", num_nans, " nan values.", num_nans/num_samples,
             "proportion of total samples")
 
@@ -540,7 +632,10 @@ def main():
         angle_indices = [3*x+10 for x in range(17)]
         dihedral_indices = [3*x+11 for x in range(17)]
 
-        rangeminmax = 7
+        if 'rangeminmax' in config['estimate_kl']:
+            rangeminmax = config['estimate_kl']['rangeminmax']
+        else:
+            rangeminmax = 11
 
         def kl(samples, training_data):
             if config['estimate_kl']['KL_direction'] == 'forward':
@@ -556,7 +651,7 @@ def main():
         kls = []
         print("Computing KLs")
         for i in tqdm(range(60)):
-            kls.append(kl(samples[:, i], ic_training_data[:, i]))
+            kls.append(kl(samples[:, i], ic_base_samples[:, i]))
         kls = np.array(kls)
 
         print("Saving KLs at", config['estimate_kl']['save_name'])
@@ -583,7 +678,405 @@ def main():
         print("Dihedral group statistics:")
         print_stats(dihedral_kls)
 
+    # Compute KL values for a grid of samples from different parameter values
+    if config['grid_search_kl_calc']['do_kl_calc']:
+        print("Finding KLs over grid of samples")
+        print("Loading sample dict file",
+            config['grid_search_kl_calc']['sample_dict_path'])
+        samples_dict = np.load(
+            hydra.utils.to_absolute_path(config['grid_search_kl_calc']['sample_dict_path']),
+            allow_pickle=True)
+        samples_dict = samples_dict.item()
+
+        # convert samples to internal coords
+        for key in samples_dict:
+            samples = torch.from_numpy(samples_dict[key])
+            ic_samples, _ = flowhmc.flows[-1].inverse(samples)
+            samples_dict[key] = ic_samples.detach().numpy()
+
+        # remove any nans
+        total_samples = 0
+        total_nans = 0
+        for key in samples_dict:
+            num_samples = samples_dict[key].shape[0]
+
+            samples_dict[key] = \
+                samples_dict[key][~np.isnan(samples_dict[key]).any(axis=1)]
+
+            num_nans = num_samples - samples_dict[key].shape[0]
+            total_samples += num_samples
+            total_nans += num_nans
+        print("removed ", total_nans, " nan values.", total_nans/total_samples,
+            "proportion of total samples")
+
+        ic_training_data, _ = flowhmc.flows[-1].inverse(flowhmc.training_data)
+        ic_training_data = ic_training_data.detach().numpy()
+
+        rangeminmax = 7
+
+        def kl(samples, training_data):
+            if config['grid_search_kl_calc']['KL_direction'] == 'forward':
+                return bg.utils.estimate_kl(training_data, samples, -rangeminmax,
+                    rangeminmax)
+            elif config['grid_search_kl_calc']['KL_direction'] == 'reverse':
+                return bg.utils.estimate_kl(samples, training_data, -rangeminmax,
+                    rangeminmax)
+            else:
+                print("Given an unknown KL direction in the config file:",
+                    config['grid_search_kl_calc']['KL_direction'])
+
+        kls_dict = {}
+        print("Computing KLs")
+        for key in tqdm(samples_dict):
+            kls = []
+            for i in range(60):
+                kls.append(kl(samples_dict[key][:, i], ic_training_data[:, i]))
+            kls = np.array(kls)
+            print(kls)
+            kls_dict[key] = kls
+
+        print("Saving KL dict at", 
+            config['grid_search_kl_calc']['kls_save_path'])
+        np.save(config['grid_search_kl_calc']['kls_save_path'], kls_dict)
+
+    if config['eval_log_target']['do_eval']:
+        print("Evaluating log target at samples",
+            config['eval_log_target']['samples'])
+        samples = np.load(hydra.utils.to_absolute_path(config['eval_log_target']['samples']))
+
+        # convert to internal coords
+        pyt_samples = torch.from_numpy(samples)
+        samples, _ = flowhmc.flows[-1].inverse(pyt_samples)
+
+        # remove any nans
+        num_samples = samples.shape[0]
+        samples = samples[~torch.isnan(samples).any(axis=1)]
+        num_nans = num_samples - samples.shape[0]
+        print("removed", num_nans, " nan values.", num_nans/num_samples,
+            "proportion of total samples")
+
+        if config['eval_log_target']['num_split'] is not None:
+            indeces = np.floor(np.linspace(0, samples.shape[0],
+                num=config['eval_log_target']['num_split']+1)).astype(int)
+            mean_log_targets = []
+            for i in range(len(indeces)-1):
+                sub_samples = samples[indeces[i]:indeces[i+1],:]
+                log_targets = flowhmc.flows[-2].target.log_prob(sub_samples)
+                mean_log_targets.append(np.mean(log_targets.detach().numpy()))
+                print("Mean log target", mean_log_targets[-1])
+            mean_log_targets = np.array(mean_log_targets)
+            np.savetxt(config['eval_log_target']['save_path'], mean_log_targets)
+        else:
+            log_targets = flowhmc.flows[-2].target.log_prob(samples)
+            mean_log_target = np.mean(log_targets.detach().numpy())
+            print("Mean log target", mean_log_target)
+            np.savetxt(config['eval_log_target']['save_path'],
+                np.array([mean_log_target]))
+
+    if config['estimate_sksd']['do_estimation']:
+        print("Estimating SKSD with samples",
+            config['estimate_sksd']['samples'])
+
+        samples = np.load(hydra.utils.to_absolute_path(config['estimate_sksd']['samples']))
+
+        g = torch.eye(60).double()
+
+
+        # convert to internal coords
+        print("Converting to internal coords")
+        pyt_samples = torch.from_numpy(samples).double()
+        ic_samples, _ = flowhmc.flows[-1].inverse(pyt_samples)
+
+        # Median estimation
+        proj_x = torch.matmul(ic_samples, g.transpose(0,1)) # (N x dim)
+        transpose_proj_x = torch.transpose(proj_x, 0, 1)
+        exp_transpose_proj_x = torch.unsqueeze(transpose_proj_x, 2) # (dim x N x 1)
+        exp_transpose_proj_x = exp_transpose_proj_x.contiguous()
+        num_median = config['estimate_sksd']['num_median']
+        squared_pairwise_distances = torch.cdist(
+            exp_transpose_proj_x[:, 0:num_median, :],
+            exp_transpose_proj_x[:, 0:num_median, :]) ** 2
+        median_squared_distances = torch.median(
+            torch.flatten(squared_pairwise_distances, start_dim=1, end_dim=2),
+            dim=1)[0]
+
+        # get gradient values
+        print("Getting gradients")
+        gradlogp = flowhmc.flows[-2].gradlogP(ic_samples)
+
+
+        print("Calculating SKSDs")
+        num_samples = config['estimate_sksd']['num_samples_in_batch']
+        num_batches = config['estimate_sksd']['num_batches']
+        num_blocks = config['estimate_sksd']['num_blocks']
+        sksds = []
+        for i in range(num_batches):
+            sub_samples = ic_samples[i*num_samples:(i+1)*num_samples,:]
+            sub_grads = gradlogp[i*num_samples:(i+1)*num_samples,:]
+            sksd = bg.utils.blockSKSD(sub_samples, sub_grads, g, num_blocks,
+                input_median=median_squared_distances)
+            print(i, sksd)
+            sksds.append(sksd.detach().numpy())
+        sksds = np.array(sksds)
+        np.savetxt(config['estimate_sksd']['save_name'], sksds)
+
+
+    if config['train_ei_sksd']['do_train']:
+        print("Training with EI and SKSD")
+        hmc_optimizer = torch.optim.Adam(flowhmc.get_hmc_parameters(),
+            lr=config['train_ei_sksd']['ei_lr'])
+
+        if config['initial_dist_model']['scaling'] is not None:
+            scale_optimizer = torch.optim.Adam(
+                [flowhmc.flows[flowhmc.end_init_flow_idx-1].log_scale],
+                lr=config['train_ei_sksd']['sksd_lr']
+            )
+        elif config['initial_dist_model']['noise_std'] is not None:
+            scale_optimizer = torch.optim.Adam(
+                [flowhmc.flows[flowhmc.end_init_flow_idx-1].log_std],
+                lr=config['train_ei_sksd']['sksd_lr']
+            )
+        else:
+            raise ValueError("""Training with EI and SKSD requires either the 
+                                scaling or noise_std config parameter to be
+                                set""")
+
+        ei_losses = np.array([])
+        sksd_losses = np.array([])
+        scales = np.array([])
+
+        save_name_base = "hmc_ei_sksd"
+
+        if config['train_ei_sksd']['resume']:
+            latest_cp = bg.utils.get_latest_checkpoint(
+                hydra.utils.to_absolute_path(config['train_ei_sksd']['resume_path']),
+                'model')
+            if latest_cp is not None:
+                start_iter = int(latest_cp[-8:-3])
+                flowhmc.load_state_dict(torch.load(latest_cp))
+                hmc_optimizer_path = hydra.utils.to_absolute_path(config['train_ei_sksd']['resume_path']) + \
+                                        "hmc_optimizer_" + save_name_base + ".pt"
+                if os.path.exists(hmc_optimizer_path):
+                    hmc_optimizer.load_state_dict(torch.load(hmc_optimizer_path))
+                scale_optimizer_path = hydra.utils.to_absolute_path(config['train_ei_sksd']['save_path']) + \
+                                        "scale_optimizer_" + save_name_base + ".pt"
+                if os.path.exists(scale_optimizer_path):
+                    scale_optimizer.load_state_dict(torch.load(scale_optimizer_path))
+                trainprog_path = hydra.utils.to_absolute_path(config['train_ei_sksd']['save_path']) + "trainprog_" + \
+                                    save_name_base + "_ckpt_%05i.txt" % start_iter
+                if os.path.exists(trainprog_path):
+                    data = np.loadtxt(trainprog_path)
+                    ei_losses = data[:, 0]
+                    sksd_losses = data[:, 1]
+                    scales = data[:, 2]
+            else:
+                start_iter = 0
+        else:
+            start_iter = 0
+
+        if config['train_ei_sksd']['sksd_lr_decay_factor'] is not None:
+            do_decay = True
+            decay_schedule = torch.optim.lr_scheduler.ExponentialLR(
+                scale_optimizer,
+                config['train_ei_sksd']['sksd_lr_decay_factor'])
+            decay_steps = config['train_ei_sksd']['sksd_lr_decay_steps']
+            if start_iter > 0:
+                for _ in range(start_iter // decay_steps):
+                    decay_schedule.step()
+        else:
+            do_decay = False
+
+        start_time = time()
+
+        print("Iter    EI loss     SKSD      scale")
+        for iter in range(start_iter, config['train_ei_sksd']['iters']):
+            start = time()
+            hmc_optimizer.zero_grad()
+
+            x, _ = flowhmc.rnvp_initial_dist.forward(
+                config['train_ei_sksd']['samples_per_iter'])
+            for i in range(len(flowhmc.flows)-1):
+                x, _ = flowhmc.flows[i].forward(x)
+            
+            log_probs = flowhmc.target_dist.log_prob(x)
+            ei_loss = -torch.mean(log_probs)
+
+            two_time = time()
+            print("Time for calculating loss {}".format(two_time-start))
+
+            if not torch.isnan(ei_loss):
+                ei_loss.backward(retain_graph=True)
+            hmc_optimizer.step()
+
+            three_time = time()
+            print("Time for calculating ei grads {}".format(three_time-two_time))
+
+            scale_optimizer.zero_grad()
+            gradlogp = flowhmc.flows[-2].gradlogP(x)
+            g = torch.eye(60).double()
+            sksd = bg.utils.SKSD(x, gradlogp, g)
+            sksd.backward()
+            scale_optimizer.step()
+
+            four_time = time()
+            print("Time for calculating sksd grads {}".format(four_time-three_time))
+
+
+            if config['initial_dist_model']['scaling'] is not None:
+                scale = torch.exp(flowhmc.flows[flowhmc.end_init_flow_idx-1].log_scale)
+            elif config['initial_dist_model']['noise_std'] is not None:
+                scale = torch.exp(flowhmc.flows[flowhmc.end_init_flow_idx-1].log_std)
+
+            print("{:4}".format(iter),
+                "{:10.4f}".format(ei_loss),
+                "{:10.4f}".format(sksd),
+                "{:10.4f}".format(scale),
+                "{} seconds".format(time()-start))
+
+            ei_losses = np.append(ei_losses, ei_loss.detach().numpy())
+            sksd_losses = np.append(sksd_losses, sksd.detach().numpy())
+            scales = np.append(scales, scale.detach().numpy())
+
+            if do_decay:
+                if iter%decay_steps == 0:
+                    decay_schedule.step()
+
+            if (iter + 1) % config['train_ei_sksd']['save_interval'] == 0:
+                data = np.column_stack((ei_losses, sksd_losses, scales))
+                np.savetxt(config['train_ei_sksd']['save_path'] + "trainprog_" + \
+                    save_name_base + "_ckpt_%05i.txt" % (iter + 1), data)
+                torch.save(flowhmc.state_dict(), config['train_ei_sksd']['save_path'] + \
+                    "model_ckpt_" + save_name_base + "_iter_%05i.pt" % (iter + 1))
+                torch.save(hmc_optimizer.state_dict(), config['train_ei_sksd']['save_path'] + \
+                            "hmc_optimizer_" + save_name_base + ".pt")
+                torch.save(scale_optimizer.state_dict(), config['train_ei_sksd']['save_path'] + \
+                            "scale_optimizer_" + save_name_base + ".pt")
+
+                if 'time_limit' in config['train_ei_sksd'] \
+                        and (time() - start_time) / 3600 > config['train_ei_sksd']['time_limit']:
+                    break
+
+    if config['train_acc_prob']['do_train']:
+        print("Training acceptance probability")
+        old_log_step_size = math.log(config['hmc']['starting_step_size'])
+        kappa = config['train_acc_prob']['learning_rate_decay']
+        lr = config['train_acc_prob']['learning_rate']
+        target_acc_prob = config['train_acc_prob']['target_acc_prob']
+        batch_num = config['train_acc_prob']['batch_num']
+
+        print("Iteration  log_step_size   mean_acc_prob   a_n")
+
+        save_data_log_step_sizes = np.array([])
+        save_data_acc_probs = np.array([])
+
+        for i in range(1, config['train_acc_prob']['iterations']):
+
+            total_acc_probs = torch.zeros((config['hmc']['chain_length'], batch_num))
+            x, _ = flowhmc.rnvp_initial_dist.forward(batch_num)
+            for j, flow in enumerate(flowhmc.flows):
+                if j >= flowhmc.end_init_flow_idx and j < len(flowhmc.flows)-1:
+                    x, _, acc_probs = flow.forward(x, True)
+                    total_acc_probs[j - flowhmc.end_init_flow_idx, :] = acc_probs
+                else:
+                    x, _ = flow.forward(x)
+
+            mean_acc_prob = torch.mean(total_acc_probs).item()
+
+            a_n = lr * i**(-kappa)
+
+            new_log_step_size = old_log_step_size - a_n * (target_acc_prob - mean_acc_prob)
+
+            save_data_log_step_sizes = np.append(save_data_log_step_sizes,
+                old_log_step_size)
+            save_data_acc_probs = np.append(save_data_acc_probs,
+                mean_acc_prob)
+
+            print("{:4}".format(i),
+                "{:10.4f}".format(new_log_step_size),
+                "{:10.4f}".format(mean_acc_prob),
+                "{:10.4f}".format(a_n))
+
+            for j in range(flowhmc.end_init_flow_idx, len(flowhmc.flows)-1):
+                flowhmc.flows[j].log_step_size = \
+                    torch.nn.Parameter(new_log_step_size * \
+                    torch.ones((config['initial_dist_model']['latent_size'])))
+
+            old_log_step_size = new_log_step_size
+
+            if (i+1) % config['train_acc_prob']['save_interval'] == 0:
+                data = np.column_stack((save_data_log_step_sizes, save_data_acc_probs))
+                save_name_base = 'train_acc_prob'
+                np.savetxt(config['train_acc_prob']['save_path'] + "trainprog_" + \
+                    save_name_base + "_ckpt_%05i.txt" % (i + 1), data)
+                torch.save(flowhmc.state_dict(), config['train_acc_prob']['save_path'] + \
+                    "model_ckpt_" + save_name_base + "_iter_%05i.pt" % (i + 1))
+
+    if config['train_worst_case_acc_prob']['do_train']:
+        print("Training step sizes using worst case acceptance probability")
+
+        # First estimate standard deviation of initial distribution for each dimension
+        initial_dist_samples = flowhmc.sample_initial_dist(10000).detach().numpy()
+        stds = np.std(initial_dist_samples, axis=0)
+
+        # Do training
+        mini_batch_size = config['train_worst_case_acc_prob']['mini_batch_size']
+        eps_0 = config['hmc']['starting_step_size']
+        eps_0_history = []
+        for i in range(config['train_worst_case_acc_prob']['max_iters']):
+            print("iter", i)
+            eps_t = eps_0 * stds
+            for j in range(flowhmc.end_init_flow_idx, len(flowhmc.flows)-1):
+                new_step_sizes = np.log(eps_t)
+                flowhmc.flows[j].log_step_size = \
+                    torch.nn.Parameter(torch.from_numpy(new_step_sizes))
+
+            total_acc_probs = torch.zeros((config['hmc']['chain_length'], mini_batch_size))
+
+            x, _ = flowhmc.rnvp_initial_dist.forward(mini_batch_size)
+            starting_point = x
+
+            grads = torch.zeros((50, 10, 128, 60))
+            ps = torch.zeros((50, 10, 128, 60))
+            zs = torch.zeros((50, 10, 128, 60))
+
+            for j, flow in enumerate(flowhmc.flows):
+                if j >= flowhmc.end_init_flow_idx and j < len(flowhmc.flows)-1:
+                    x, _, acc_probs, grad, p, z = flow.forward(x, True)
+                    total_acc_probs[j - flowhmc.end_init_flow_idx, :] = acc_probs
+                    grads[j-flowhmc.end_init_flow_idx, :, :, :] = grad
+                    ps[j-flowhmc.end_init_flow_idx, :, :, :] = p
+                    zs[j-flowhmc.end_init_flow_idx, :, :, :] = z
+                else:
+                    x, _ = flow.forward(x)
+
+            mean_acc_probs = torch.mean(total_acc_probs, dim=0)
+            print("mean", mean_acc_probs)
+
+
+            for k in range(128):
+                if mean_acc_probs[k] < 0.5 and mean_acc_probs[k] > 0.0001:
+                    print("For mean", mean_acc_probs[k])
+                    print("total acc probs")
+                    print(total_acc_probs[:, k])
+                    print("grads")
+                    avg_grads = torch.mean(torch.abs(grads[:, :, k, :]), dim=2)
+                    print(avg_grads)
+                    # avg_grads = torch.mean(grads)
+
+            # Remove values of 0
+            mean_acc_probs = mean_acc_probs[mean_acc_probs>1e-6]
+
+            lowest_acc_prob = torch.min(mean_acc_probs)
+            print("lowest acc prob", lowest_acc_prob)
+
+            percent_change = config['train_worst_case_acc_prob']['percent_change_each_iter']
+            if lowest_acc_prob < 0.25:
+                eps_0 = eps_0 * (1.0 - 0.01 * percent_change)
+            else:
+                eps_0 = eps_0 * (1.0 + 0.01 * percent_change)
+            print("eps 0", eps_0)
+            eps_0_history.append(eps_0)
+
 
 if __name__ == "__main__":
     main()
-

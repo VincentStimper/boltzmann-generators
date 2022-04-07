@@ -100,7 +100,7 @@ class BoltzmannGenerator(nf.NormalizingFlow):
         # Define flows
         rnvp_blocks = config['model']['rnvp']['blocks']
 
-        # Set prior and q0
+        # Set target distribution
         energy_cut = config['system']['energy_cut']
         energy_max = config['system']['energy_max']
         transform = CoordinateTransform(training_data, ndim, z_matrix, cart_indices)
@@ -121,16 +121,23 @@ class BoltzmannGenerator(nf.NormalizingFlow):
                 p_ = TransformedBoltzmann(self.sim.context, temperature, energy_cut=energy_cut,
                                           energy_max=energy_max, transform=transform)
 
-        latent_size = config['model']['latent_size']
-        q0 = nf.distributions.DiagGaussian(latent_size, trainable=False)
-
-        # Set up flow layers
+        # Set up parameters for flow layers
         hidden_units = config['model']['rnvp']['hidden_units']
         hidden_layers = config['model']['rnvp']['hidden_layers']
         output_fn = config['model']['rnvp']['output_fn']
         output_scale = config['model']['rnvp']['output_scale']
         init_zeros = config['model']['rnvp']['init_zeros']
 
+        # Set up base distribution
+        latent_size = config['model']['latent_size']
+        if 'base' in config['model'] and config['model']['base'] == 'resampled':
+            a = nf.nets.MLP([latent_size] + hidden_layers * [hidden_units] + [1],
+                            output_fn="sigmoid", leaky=0.01)
+            q0 = nf.distributions.ResampledGaussian(latent_size, a, 100, 0.01, trainable=False)
+        else:
+            q0 = nf.distributions.DiagGaussian(latent_size, trainable=False)
+
+        # Set up flow layers
         b = torch.Tensor([1 if i % 2 == 0 else 0 for i in range(latent_size)])
         flows = []
         for i in range(rnvp_blocks):

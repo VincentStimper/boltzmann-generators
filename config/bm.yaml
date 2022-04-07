@@ -20,6 +20,7 @@ system:                             # Properties of molecular system
 
 model:                              # Properties of the model
 
+  base: 'gaussian'                  # Base distribution, can be 'gaussian' or 'resampled'
   latent_size: 60                   # Int, number of features in the latent space
   actnorm: True                     # Bool, flag whether to include an ActNorm layer after each
                                     # Real NVP block
