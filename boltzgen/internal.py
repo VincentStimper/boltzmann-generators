@@ -420,3 +420,127 @@ def topological_sort(graph_unsorted):
             raise RuntimeError("A cyclic dependency occured.")
 
     return graph_sorted
+
+
+class CompleteInternalCoordinateTransform(nn.Module):
+    def __init__(
+        self,
+        n_dim,
+        z_mat,
+        cartesian_indices,
+        training_data,
+    ):
+        super().__init__()
+        # cartesian indices are the atom indices of the atoms that are not
+        # represented in internal coordinates but are left as cartesian
+        # e.g. for 22 atoms it could be [4, 5, 6, 8, 14, 15, 16, 18]
+        self.n_dim = n_dim
+        self.len_cart_inds = len(cartesian_indices)
+        assert self.len_cart_inds == 3
+
+        # Create our internal coordinate transform
+        self.ic_transform = InternalCoordinateTransform(
+            n_dim, z_mat, cartesian_indices, training_data
+        )
+
+        # permute puts the cartesian coords first then the internal ones
+        # permute_inv does the opposite
+        permute = torch.zeros(n_dim, dtype=torch.long)
+        permute_inv = torch.zeros(n_dim, dtype=torch.long)
+        all_ind = cartesian_indices + [row[0] for row in z_mat]
+        for i, j in enumerate(all_ind):
+            permute[3 * i + 0] = torch.as_tensor(3 * j + 0, dtype=torch.long)
+            permute[3 * i + 1] = torch.as_tensor(3 * j + 1, dtype=torch.long)
+            permute[3 * i + 2] = torch.as_tensor(3 * j + 2, dtype=torch.long)
+            permute_inv[3 * j + 0] = torch.as_tensor(3 * i + 0, dtype=torch.long)
+            permute_inv[3 * j + 1] = torch.as_tensor(3 * i + 1, dtype=torch.long)
+            permute_inv[3 * j + 2] = torch.as_tensor(3 * i + 2, dtype=torch.long)
+        self.register_buffer("permute", permute)
+        self.register_buffer("permute_inv", permute_inv)
+
+        training_data = training_data[:, self.permute]
+        b1, b2, angle = self._convert_last_internal(training_data[:, :3*self.len_cart_inds])
+        self.register_buffer("mean_b1", torch.mean(b1))
+        self.register_buffer("mean_b2", torch.mean(b2))
+        self.register_buffer("mean_angle", torch.mean(angle))
+        self.register_buffer("std_b1", torch.std(b1))
+        self.register_buffer("std_b2", torch.std(b2))
+        self.register_buffer("std_angle", torch.std(angle))
+        scale_jac = -(torch.log(self.std_b1) + torch.log(self.std_b2) + torch.log(self.std_angle))
+        self.register_buffer("scale_jac", scale_jac)
+
+
+    def forward(self, x):
+
+        # Create the jacobian vector
+        jac = x.new_zeros(x.shape[0])
+
+        # Run transform to internal coordinates.
+        x, new_jac = self.ic_transform.forward(x)
+        jac = jac + new_jac
+
+        # Permute to put PCAs first.
+        x = x[:, self.permute]
+
+        # Split off the PCA coordinates and internal coordinates
+        int_coords = x[:, 3*self.len_cart_inds:]
+
+        # Compute last internal coordinates
+        b1, b2, angle = self._convert_last_internal(x[:, :3*self.len_cart_inds])
+        jac = jac - torch.log(b2)
+        # Normalize
+        b1 -= self.mean_b1
+        b1 /= self.std_b1
+        b2 -= self.mean_b2
+        b2 /= self.std_b2
+        angle -= self.mean_angle
+        angle /= self.std_angle
+        jac = jac + self.scale_jac
+
+        # Merge everything back together.
+        x = torch.cat([b1[:, None], b2[:, None], angle[:, None]] + [int_coords], dim=1)
+
+        return x, jac
+
+    def inverse(self, x):
+        # Create the jacobian vector
+        jac = x.new_zeros(x.shape[0])
+
+        # Separate the internal coordinates
+        b1, b2, angle = x[:, 0], x[:, 1], x[:, 2]
+        int_coords = x[:, 3*self.len_cart_inds-6:]
+
+        # Reconstruct first three atoms
+        b1 = b1 * self.std_b1 + self.mean_b1
+        b2 = b2 * self.std_b2 + self.mean_b2
+        angle = angle * self.std_angle + self.mean_angle
+        jac = jac - self.scale_jac
+        cart_coords = x.new_zeros(x.shape[0], 3 * self.len_cart_inds)
+        cart_coords[:, 3] = b1
+        cart_coords[:, 6] = b2 * torch.cos(angle)
+        cart_coords[:, 7] = b2 * torch.sin(angle)
+        jac = jac + torch.log(b2)
+
+        # Merge everything back together
+        x = torch.cat([cart_coords] + [int_coords], dim=1)
+
+        # Permute back into atom order
+        x = x[:, self.permute_inv]
+
+        # Run through inverse internal coordinate transform
+        x, new_jac = self.ic_transform.inverse(x)
+        jac = jac + new_jac
+
+        return x, jac
+
+    def _convert_last_internal(self, x):
+        p1 = x[:, :3]
+        p2 = x[:, 3:6]
+        p3 = x[:, 6:9]
+        p21 = p2 - p1
+        p31 = p3 - p1
+        b1 = torch.norm(p21, dim=1)
+        b2 = torch.norm(p31, dim=1)
+        cos_angle = torch.sum((p21) * (p31), dim=1) / b1 / b2
+        angle = torch.acos(cos_angle)
+        return b1, b2, angle
