@@ -136,8 +136,6 @@ class InternalCoordinateTransform(Transform):
                                        bins=shift_dih_params['hist_bins'],
                                        min=-math.pi, max=math.pi)
                     self.mean_dih[i] = val[torch.argmin(hist)] + math.pi
-                self.mean_dih[ind] = torch.min(transformed[:, self.dih_indices[ind]], dim=0).\
-                                         values + math.pi
             transformed[:, self.dih_indices] -= self.mean_dih
             self._fix_dih(transformed)
             transformed[:, self.dih_indices] /= self.std_dih
