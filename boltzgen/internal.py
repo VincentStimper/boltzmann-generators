@@ -129,11 +129,13 @@ class InternalCoordinateTransform(Transform):
             if shift_dih:
                 ind = torch.arange(len(self.std_dih))
                 ind = ind[self.std_dih > shift_dih_params['std_threshold']]
+                val = torch.linspace(-math.pi, math.pi,
+                                     shift_dih_params['hist_bins'])
                 for i in ind:
-                    hist = torch.histogram(transformed[:, self.dih_indices[i]],
-                                           bins=shift_dih_params['hist_bins'],
-                                           range=[-math.pi, math.pi])
-                    self.mean_dih[i] = hist.bin_edges[torch.argmin(hist.hist)] + math.pi
+                    hist = torch.histc(transformed[:, self.dih_indices[i]],
+                                       bins=shift_dih_params['hist_bins'],
+                                       min=-math.pi, max=math.pi)
+                    self.mean_dih[i] = val[torch.argmin(hist)] + math.pi
                 self.mean_dih[ind] = torch.min(transformed[:, self.dih_indices[ind]], dim=0).\
                                          values + math.pi
             transformed[:, self.dih_indices] -= self.mean_dih
