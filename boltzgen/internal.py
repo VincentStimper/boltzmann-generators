@@ -105,7 +105,8 @@ def reconstruct_cart(cart, ref_atoms, bonds, angles, dihs):
 
 
 class InternalCoordinateTransform(Transform):
-    def __init__(self, dims, z_indices=None, cart_indices=None, training_data=None):
+    def __init__(self, dims, z_indices=None, cart_indices=None, training_data=None,
+                 shift_dih=False, dih_std_threshold=0.5):
         super().__init__()
         self.dims = dims
         with torch.no_grad():
@@ -123,9 +124,12 @@ class InternalCoordinateTransform(Transform):
             self._setup_std_angles(transformed)
             transformed[:, self.angle_indices] /= self.std_angles
             self._setup_mean_dih(transformed)
+            self._setup_std_dih(transformed)
+            if shift_dih:
+                ind = self.std_dih > dih_std_threshold
+                self.mean_dih[ind] = torch.min(transformed[:, self.dih_indices[ind]]) + math.pi
             transformed[:, self.dih_indices] -= self.mean_dih
             self._fix_dih(transformed)
-            self._setup_std_dih(transformed)
             transformed[:, self.dih_indices] /= self.std_dih
             scale_jac = -(
                 torch.sum(torch.log(self.std_bonds))
@@ -258,13 +262,11 @@ class InternalCoordinateTransform(Transform):
 
     def _fix_dih(self, x):
         dih = x[:, self.dih_indices]
-        dih = torch.where(dih < -math.pi, dih + 2 * math.pi, dih)
-        dih = torch.where(dih > math.pi, dih - 2 * math.pi, dih)
+        dih = (dih + math.pi) % (2 * math.pi) - math.pi
         x[:, self.dih_indices] = dih
 
     def _setup_std_dih(self, x):
         std_dih = torch.std(x[:, self.dih_indices], dim=0)
-        #std_dih = torch.ones_like(std_dih)
         self.register_buffer("std_dih", std_dih)
 
     def _validate_training_data(self, training_data):
@@ -429,6 +431,8 @@ class CompleteInternalCoordinateTransform(nn.Module):
         z_mat,
         cartesian_indices,
         training_data,
+        shift_dih=False,
+        dih_std_threshold=0.5
     ):
         super().__init__()
         # cartesian indices are the atom indices of the atoms that are not
@@ -440,7 +444,7 @@ class CompleteInternalCoordinateTransform(nn.Module):
 
         # Create our internal coordinate transform
         self.ic_transform = InternalCoordinateTransform(
-            n_dim, z_mat, cartesian_indices, training_data
+            n_dim, z_mat, cartesian_indices, training_data, shift_dih, dih_std_threshold
         )
 
         # permute puts the cartesian coords first then the internal ones
