@@ -127,7 +127,8 @@ class InternalCoordinateTransform(Transform):
             self._setup_std_dih(transformed)
             if shift_dih:
                 ind = self.std_dih > dih_std_threshold
-                self.mean_dih[ind] = torch.min(transformed[:, self.dih_indices[ind]]) + math.pi
+                self.mean_dih[ind] = torch.min(transformed[:, self.dih_indices[ind]], dim=0).\
+                                         values + math.pi
             transformed[:, self.dih_indices] -= self.mean_dih
             self._fix_dih(transformed)
             transformed[:, self.dih_indices] /= self.std_dih
