@@ -17,7 +17,7 @@ class CoordinateTransform(nf.flows.Flow):
     convention of normflow package
     """
     def __init__(self, data, n_dim, z_matrix, backbone_indices, mode='mixed',
-                 shift_dih=False, dih_std_threshold=0.5):
+                 shift_dih=False, shift_dih_params={'std_threshold': 0.5, 'hist_bins': 100}):
         """
         Constructor
         :param data: Data used to initialize transformation
@@ -30,11 +30,11 @@ class CoordinateTransform(nf.flows.Flow):
         super().__init__()
         if mode == 'mixed':
             self.transform = mixed.MixedTransform(n_dim, backbone_indices, z_matrix, data,
-                                                  shift_dih, dih_std_threshold)
+                                                  shift_dih, shift_dih_params)
         elif mode == 'internal':
             self.transform = internal.CompleteInternalCoordinateTransform(n_dim, z_matrix,
                                                                           backbone_indices, data,
-                                                                          shift_dih, dih_std_threshold)
+                                                                          shift_dih, shift_dih_params)
         else:
             raise NotImplementedError('This mode is not implemented.')
 

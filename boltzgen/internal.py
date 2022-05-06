@@ -106,7 +106,8 @@ def reconstruct_cart(cart, ref_atoms, bonds, angles, dihs):
 
 class InternalCoordinateTransform(Transform):
     def __init__(self, dims, z_indices=None, cart_indices=None, training_data=None,
-                 shift_dih=False, dih_std_threshold=0.5):
+                 shift_dih=False,
+                 shift_dih_params={'std_threshold': 0.5, 'hist_bins': 100}):
         super().__init__()
         self.dims = dims
         with torch.no_grad():
@@ -126,7 +127,13 @@ class InternalCoordinateTransform(Transform):
             self._setup_mean_dih(transformed)
             self._setup_std_dih(transformed)
             if shift_dih:
-                ind = self.std_dih > dih_std_threshold
+                ind = torch.arange(len(self.std_dih))
+                ind = ind[self.std_dih > shift_dih_params['std_threshold']]
+                for i in ind:
+                    hist = torch.histogram(transformed[:, self.dih_indices[i]],
+                                           bins=shift_dih_params['hist_bins'],
+                                           range=[-math.pi, math.pi])
+                    self.mean_dih[i] = hist.bin_edges[torch.argmin(hist.hist)] + math.pi
                 self.mean_dih[ind] = torch.min(transformed[:, self.dih_indices[ind]], dim=0).\
                                          values + math.pi
             transformed[:, self.dih_indices] -= self.mean_dih
@@ -433,7 +440,7 @@ class CompleteInternalCoordinateTransform(nn.Module):
         cartesian_indices,
         training_data,
         shift_dih=False,
-        dih_std_threshold=0.5
+        shift_dih_params={'std_threshold': 0.5, 'hist_bins': 100}
     ):
         super().__init__()
         # cartesian indices are the atom indices of the atoms that are not
@@ -445,7 +452,7 @@ class CompleteInternalCoordinateTransform(nn.Module):
 
         # Create our internal coordinate transform
         self.ic_transform = InternalCoordinateTransform(
-            n_dim, z_mat, cartesian_indices, training_data, shift_dih, dih_std_threshold
+            n_dim, z_mat, cartesian_indices, training_data, shift_dih, shift_dih_params
         )
 
         # permute puts the cartesian coords first then the internal ones
