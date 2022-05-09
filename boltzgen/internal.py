@@ -125,20 +125,25 @@ class InternalCoordinateTransform(Transform):
             self._setup_std_angles(transformed)
             transformed[:, self.angle_indices] /= self.std_angles
             self._setup_mean_dih(transformed)
+            transformed[:, self.dih_indices] -= self.mean_dih
+            self._fix_dih(transformed)
             self._setup_std_dih(transformed)
+            transformed[:, self.dih_indices] /= self.std_dih
             if shift_dih:
                 ind = torch.arange(len(self.std_dih))
                 ind = ind[self.std_dih > shift_dih_params['std_threshold']]
                 val = torch.linspace(-math.pi, math.pi,
                                      shift_dih_params['hist_bins'])
                 for i in ind:
-                    hist = torch.histc(transformed[:, self.dih_indices[i]],
-                                       bins=shift_dih_params['hist_bins'],
+                    dih = transformed[:, self.dih_indices[i]]
+                    dih = dih * self.std_dih[i] + self.mean_dih[i]
+                    dih = (dih + math.pi) % (2 * math.pi) - math.pi
+                    hist = torch.histc(dih, bins=shift_dih_params['hist_bins'],
                                        min=-math.pi, max=math.pi)
                     self.mean_dih[i] = val[torch.argmin(hist)] + math.pi
-            transformed[:, self.dih_indices] -= self.mean_dih
-            self._fix_dih(transformed)
-            transformed[:, self.dih_indices] /= self.std_dih
+                    dih = (dih - self.mean_dih[i]) / self.std_dih[i]
+                    dih = (dih + math.pi) % (2 * math.pi) - math.pi
+                    transformed[:, self.dih_indices[i]] = dih
             scale_jac = -(
                 torch.sum(torch.log(self.std_bonds))
                 + torch.sum(torch.log(self.std_angles))
