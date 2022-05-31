@@ -105,17 +105,21 @@ def reconstruct_cart(cart, ref_atoms, bonds, angles, dihs):
 
 
 class InternalCoordinateTransform(Transform):
-    def __init__(self, dims, z_indices=None, cart_indices=None, training_data=None,
-                 shift_dih=False,
-                 shift_dih_params={'std_threshold': 0.5, 'hist_bins': 100}):
+    def __init__(self, dims, z_indices=None, cart_indices=None, data=None,
+                 ind_circ_dih=[], shift_dih=False,
+                 shift_dih_params={'hist_bins': 100},
+                 default_std={'bond': 0.005, 'angle': 0.1, 'dih': 0.2}):
         super().__init__()
         self.dims = dims
         with torch.no_grad():
             # Setup indexing.
             self._setup_indices(z_indices, cart_indices)
-            self._validate_training_data(training_data)
+            self._validate_data(data)
             # Setup the mean and standard deviations for each internal coordinate.
-            transformed, _ = self._fwd(training_data)
+            transformed, _ = self._fwd(data)
+            # Normalize
+            self.default_std = default_std
+            self.ind_circ_dih = ind_circ_dih
             self._setup_mean_bonds(transformed)
             transformed[:, self.bond_indices] -= self.mean_bonds
             self._setup_std_bonds(transformed)
@@ -130,11 +134,9 @@ class InternalCoordinateTransform(Transform):
             self._setup_std_dih(transformed)
             transformed[:, self.dih_indices] /= self.std_dih
             if shift_dih:
-                ind = torch.arange(len(self.std_dih))
-                ind = ind[self.std_dih > shift_dih_params['std_threshold']]
                 val = torch.linspace(-math.pi, math.pi,
                                      shift_dih_params['hist_bins'])
-                for i in ind:
+                for i in self.ind_circ_dih:
                     dih = transformed[:, self.dih_indices[i]]
                     dih = dih * self.std_dih[i] + self.mean_dih[i]
                     dih = (dih + math.pi) % (2 * math.pi) - math.pi
@@ -256,7 +258,11 @@ class InternalCoordinateTransform(Transform):
         # dimensions being not properly normalised e.g. bond lengths
         # which can have stds of the order 1e-7
         # The flow will then have to fit to a very concentrated dist
-        std_bonds = torch.std(x[:, self.bond_indices], dim=0)
+        if x.shape[0] > 1:
+            std_bonds = torch.std(x[:, self.bond_indices], dim=0)
+        else:
+            std_bonds = torch.ones_like(self.mean_bonds) \
+                        * self.default_std['bond']
         self.register_buffer("std_bonds", std_bonds)
 
     def _setup_mean_angles(self, x):
@@ -264,7 +270,11 @@ class InternalCoordinateTransform(Transform):
         self.register_buffer("mean_angles", mean_angles)
 
     def _setup_std_angles(self, x):
-        std_angles = torch.std(x[:, self.angle_indices], dim=0)
+        if x.shape[0] > 1:
+            std_angles = torch.std(x[:, self.angle_indices], dim=0)
+        else:
+            std_angles = torch.ones_like(self.mean_angles) \
+                         * self.default_std['angle']
         self.register_buffer("std_angles", std_angles)
 
     def _setup_mean_dih(self, x):
@@ -279,28 +289,30 @@ class InternalCoordinateTransform(Transform):
         x[:, self.dih_indices] = dih
 
     def _setup_std_dih(self, x):
-        std_dih = torch.std(x[:, self.dih_indices], dim=0)
+        if x.shape[0] > 1:
+            std_dih = torch.std(x[:, self.dih_indices], dim=0)
+        else:
+            std_dih = torch.ones_like(self.mean_dih) \
+                      * self.default_std['dih']
+            std_dih[self.ind_circ_dih] = 1.
         self.register_buffer("std_dih", std_dih)
 
-    def _validate_training_data(self, training_data):
-        if training_data is None:
+    def _validate_data(self, data):
+        if data is None:
             raise ValueError(
                 "InternalCoordinateTransform must be supplied with training_data."
             )
 
-        if len(training_data.shape) != 2:
+        if len(data.shape) != 2:
             raise ValueError("training_data must be n_samples x n_dim array")
 
-        n_samp = training_data.shape[0]
-        n_dim = training_data.shape[1]
+        n_samp = data.shape[0]
+        n_dim = data.shape[1]
 
         if n_dim != self.dims:
             raise ValueError(
                 f"training_data must have {self.dims} dimensions, not {n_dim}."
             )
-
-        if not n_samp >= 1:
-            raise ValueError("training_data must have n_samp > 1.")
 
     def _setup_indices(self, z_indices, cart_indices):
         n_atoms = self.dims // 3
@@ -443,9 +455,11 @@ class CompleteInternalCoordinateTransform(nn.Module):
         n_dim,
         z_mat,
         cartesian_indices,
-        training_data,
+        data,
+        ind_circ_dih=[],
         shift_dih=False,
-        shift_dih_params={'std_threshold': 0.5, 'hist_bins': 100}
+        shift_dih_params={'hist_bins': 100},
+        default_std={'bond': 0.005, 'angle': 0.1, 'dih': 0.2}
     ):
         super().__init__()
         # cartesian indices are the atom indices of the atoms that are not
@@ -457,7 +471,8 @@ class CompleteInternalCoordinateTransform(nn.Module):
 
         # Create our internal coordinate transform
         self.ic_transform = InternalCoordinateTransform(
-            n_dim, z_mat, cartesian_indices, training_data, shift_dih, shift_dih_params
+            n_dim, z_mat, cartesian_indices, data, ind_circ_dih,
+            shift_dih, shift_dih_params, default_std
         )
 
         # permute puts the cartesian coords first then the internal ones
@@ -475,14 +490,19 @@ class CompleteInternalCoordinateTransform(nn.Module):
         self.register_buffer("permute", permute)
         self.register_buffer("permute_inv", permute_inv)
 
-        training_data = training_data[:, self.permute]
-        b1, b2, angle = self._convert_last_internal(training_data[:, :3*self.len_cart_inds])
+        data = data[:, self.permute]
+        b1, b2, angle = self._convert_last_internal(data[:, :3 * self.len_cart_inds])
         self.register_buffer("mean_b1", torch.mean(b1))
         self.register_buffer("mean_b2", torch.mean(b2))
         self.register_buffer("mean_angle", torch.mean(angle))
-        self.register_buffer("std_b1", torch.std(b1))
-        self.register_buffer("std_b2", torch.std(b2))
-        self.register_buffer("std_angle", torch.std(angle))
+        if b1.shape[0] > 1:
+            self.register_buffer("std_b1", torch.std(b1))
+            self.register_buffer("std_b2", torch.std(b2))
+            self.register_buffer("std_angle", torch.std(angle))
+        else:
+            self.register_buffer("std_b1", b1.new_ones([]) * default_std['bond'])
+            self.register_buffer("std_b2", b2.new_ones([]) * default_std['bond'])
+            self.register_buffer("std_angle", angle.new_ones([]) * default_std['angle'])
         scale_jac = -(torch.log(self.std_b1) + torch.log(self.std_b2) + torch.log(self.std_angle))
         self.register_buffer("scale_jac", scale_jac)
 
