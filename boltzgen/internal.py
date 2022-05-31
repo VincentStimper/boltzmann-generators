@@ -306,7 +306,6 @@ class InternalCoordinateTransform(Transform):
         if len(data.shape) != 2:
             raise ValueError("training_data must be n_samples x n_dim array")
 
-        n_samp = data.shape[0]
         n_dim = data.shape[1]
 
         if n_dim != self.dims:

@@ -11,8 +11,10 @@ class MixedTransform(nn.Module):
         cartesian_indices,
         z_mat,
         training_data,
+        ind_circ_dih=[],
         shift_dih=False,
-        shift_dih_params={'std_threshold': 0.5, 'hist_bins': 100}
+        shift_dih_params={'hist_bins': 100},
+        default_std={'bond': 0.005, 'angle': 0.1, 'dih': 0.2}
     ):
         super().__init__()
         # cartesian indices are the atom indices of the atoms that are not
@@ -23,7 +25,8 @@ class MixedTransform(nn.Module):
 
         # Create our internal coordinate transform
         self.ic_transform = InternalCoordinateTransform(
-            n_dim, z_mat, cartesian_indices, training_data, shift_dih, shift_dih_params
+            n_dim, z_mat, cartesian_indices, training_data,
+            ind_circ_dih, shift_dih, shift_dih_params, default_std
         )
 
         # permute puts the cartesian coords first then the internal ones
