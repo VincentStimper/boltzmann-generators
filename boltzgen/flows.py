@@ -19,7 +19,7 @@ class CoordinateTransform(nf.flows.Flow):
     def __init__(self, data, n_dim, z_matrix, backbone_indices,
                  mode='mixed', ind_circ_dih=[], shift_dih=False,
                  shift_dih_params={'hist_bins': 100},
-                 default_std={'bond': 0.005, 'angle': 0.1, 'dih': 0.2}):
+                 default_std={'bond': 0.005, 'angle': 0.15, 'dih': 0.2}):
         """
         Constructor
         :param data: Data used to initialize transformation

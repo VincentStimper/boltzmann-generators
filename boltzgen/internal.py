@@ -108,7 +108,7 @@ class InternalCoordinateTransform(Transform):
     def __init__(self, dims, z_indices=None, cart_indices=None, data=None,
                  ind_circ_dih=[], shift_dih=False,
                  shift_dih_params={'hist_bins': 100},
-                 default_std={'bond': 0.005, 'angle': 0.1, 'dih': 0.2}):
+                 default_std={'bond': 0.005, 'angle': 0.15, 'dih': 0.2}):
         super().__init__()
         self.dims = dims
         with torch.no_grad():
@@ -458,7 +458,7 @@ class CompleteInternalCoordinateTransform(nn.Module):
         ind_circ_dih=[],
         shift_dih=False,
         shift_dih_params={'hist_bins': 100},
-        default_std={'bond': 0.005, 'angle': 0.1, 'dih': 0.2}
+        default_std={'bond': 0.005, 'angle': 0.15, 'dih': 0.2}
     ):
         super().__init__()
         # cartesian indices are the atom indices of the atoms that are not
