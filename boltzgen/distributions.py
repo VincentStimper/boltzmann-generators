@@ -1,5 +1,5 @@
 import torch
-import normflow as nf
+import normflows as nf
 import multiprocessing as mp
 from torch import nn
 

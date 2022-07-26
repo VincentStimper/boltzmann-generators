@@ -3,7 +3,7 @@ import torch.nn as nn
 import numpy as np
 import sys
 sys.path.insert(0, '../../normalizing-flows')
-import normflow as nf
+import normflows as nf
 
 from simtk import openmm as mm
 from simtk import unit

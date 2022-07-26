@@ -1,6 +1,6 @@
 from . import mixed
 from . import internal
-import normflow as nf
+import normflows as nf
 import torch
 
 
@@ -14,7 +14,7 @@ class CoordinateTransform(nf.flows.Flow):
     https://github.com/maccallumlab/BoltzmannGenerator
 
     Meaning of forward and backward pass are switched to meet
-    convention of normflow package
+    convention of normflows package
     """
     def __init__(self, data, n_dim, z_matrix, backbone_indices,
                  mode='mixed', ind_circ_dih=[], shift_dih=False,

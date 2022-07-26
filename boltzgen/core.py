@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 
-import normflow as nf
+import normflows as nf
 
 from simtk import openmm as mm
 from simtk import unit
