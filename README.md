@@ -1,9 +1,9 @@
-# Boltzmann generators
+# Implementing Boltzmann generators with [`normflows`](https://github.com/VincentStimper/normalizing-flows)
 
 This package comprises several tools to train Boltzmann generators, 
 i.e. normalizing flows approximating Boltzmann distributions. It
 uses and extends the
-[normflows](https://github.com/VincentStimper/normalizing-flows) package.
+[`normflows`](https://github.com/VincentStimper/normalizing-flows) package.
 To compute the Boltzmann distribution, the [OpenMM](https://openmm.org/)
 Python library is applied.
 
